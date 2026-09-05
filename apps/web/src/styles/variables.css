@@ -1,0 +1,28 @@
+:root {
+  --primary: #2563eb;
+  --secondary: #7c3aed;
+
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --background: #f8fafc;
+  --surface: #ffffff;
+
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+
+  --border: #e5e7eb;
+
+  --radius: 12px;
+
+  --shadow:
+    0 8px 24px rgba(0,0,0,.08);
+
+  --transition: .3s ease;
+
+  --font-family:
+    Inter,
+    system-ui,
+    sans-serif;
+}
