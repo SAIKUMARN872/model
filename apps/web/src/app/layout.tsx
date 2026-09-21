@@ -1,17 +1,17 @@
-import "../styles/globals.css";
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Dashboard",
-  description: "AI Platform built with Next.js",
+  title: "ModelNow",
+  description:
+    "ModelNow — One AI platform. Every model. Every task. Cost, latency and quality optimization.",
 };
 
 export default function RootLayout({
   children,
-}: {
-  children: ReactNode;
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
       <body>{children}</body>

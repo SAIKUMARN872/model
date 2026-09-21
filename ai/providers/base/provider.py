@@ -1,152 +1,185 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, Optional, Type
+from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 
-from ai.providers.base.provider import BaseProvider
-from ai.providers.base.config import ProviderConfig
-from ai.providers.base.exceptions import ProviderException
-
-
-class ProviderTier(str, Enum):
-    SLM = "slm"
-    MLM = "mlm"
-    LLM = "llm"
-
-
-@dataclass(frozen=True)
-class ProviderMeta:
-    name: str
-    tier: ProviderTier
-    default_model: str
-    supports_streaming: bool = True
-    supports_tools: bool = False
-    supports_vision: bool = False
-    supports_audio: bool = False
-    supports_embeddings: bool = False
-    supports_image_generation: bool = False
+from .config import ProviderConfig
+from .models import (
+    ModelInfo,
+    ProviderHealth,
+    ProviderMetadata,
+)
+from .request import ChatRequest
+from .response import (
+    ChatResponse,
+    StreamChunk,
+)
 
 
-class ProviderRegistry:
+class BaseProvider(ABC):
     """
-    Central provider registry used by the routing engine.
-    """
+    Abstract provider contract for ModelNow.
 
-    _providers: Dict[str, Type[BaseProvider]] = {}
-    _metadata: Dict[str, ProviderMeta] = {}
+    Every concrete AI provider must implement this interface.
 
-    @classmethod
-    def register(
-        cls,
-        provider_name: str,
-        provider_cls: Type[BaseProvider],
-        metadata: ProviderMeta,
-    ) -> None:
-        cls._providers[provider_name] = provider_cls
-        cls._metadata[provider_name] = metadata
-
-    @classmethod
-    def get_provider(cls, provider_name: str) -> Type[BaseProvider]:
-        if provider_name not in cls._providers:
-            raise ProviderException(f"Provider not registered: {provider_name}")
-        return cls._providers[provider_name]
-
-    @classmethod
-    def get_metadata(cls, provider_name: str) -> ProviderMeta:
-        if provider_name not in cls._metadata:
-            raise ProviderException(f"Metadata not found: {provider_name}")
-        return cls._metadata[provider_name]
-
-    @classmethod
-    def list_providers(cls) -> Dict[str, ProviderMeta]:
-        return cls._metadata
-
-
-class ProviderFactory:
-    """
-    Factory responsible for creating provider instances.
+    Examples:
+        OpenAI
+        Anthropic
+        Google
+        DeepSeek
+        Mistral
+        xAI
+        Cohere
+        OpenRouter
+        Azure OpenAI
+        AWS Bedrock
     """
 
-    @staticmethod
-    def create(
-        provider_name: str,
+    name: str = "base"
+    version: str = "1.0"
+
+    def __init__(
+        self,
         config: ProviderConfig,
-    ) -> BaseProvider:
-        provider_cls = ProviderRegistry.get_provider(provider_name)
-        return provider_cls(config)
+    ) -> None:
+        self.config = config
+        self._initialized = False
 
+    @property
+    def initialized(self) -> bool:
+        """Return whether the provider has been initialized."""
 
-def register_default_providers() -> None:
-    """
-    Register built-in providers.
-    Replace BaseProvider with concrete provider implementations.
-    """
+        return self._initialized
 
-    ProviderRegistry.register(
-        provider_name="openai",
-        provider_cls=BaseProvider,
-        metadata=ProviderMeta(
-            name="openai",
-            tier=ProviderTier.LLM,
-            default_model="gpt-4o-mini",
-            supports_streaming=True,
-            supports_tools=True,
-            supports_vision=True,
-            supports_audio=True,
-            supports_embeddings=True,
-            supports_image_generation=True,
-        ),
-    )
+    @property
+    def metadata(self) -> ProviderMetadata:
+        """
+        Return normalized provider metadata.
 
-    ProviderRegistry.register(
-        provider_name="google",
-        provider_cls=BaseProvider,
-        metadata=ProviderMeta(
-            name="google",
-            tier=ProviderTier.LLM,
-            default_model="gemini-2.0-flash",
-            supports_streaming=True,
-            supports_tools=True,
-            supports_vision=True,
-            supports_audio=True,
-        ),
-    )
+        Concrete providers can override this when they need
+        provider-specific metadata.
+        """
 
-    ProviderRegistry.register(
-        provider_name="anthropic",
-        provider_cls=BaseProvider,
-        metadata=ProviderMeta(
-            name="anthropic",
-            tier=ProviderTier.LLM,
-            default_model="claude-3-5-sonnet-latest",
-            supports_streaming=True,
-            supports_tools=True,
-        ),
-    )
+        return ProviderMetadata(
+            provider_id=self.config.provider_id,
+            display_name=self.name,
+            version=self.version,
+        )
 
-    ProviderRegistry.register(
-        provider_name="deepseek",
-        provider_cls=BaseProvider,
-        metadata=ProviderMeta(
-            name="deepseek",
-            tier=ProviderTier.MLM,
-            default_model="deepseek-chat",
-            supports_streaming=True,
-        ),
-    )
+    @abstractmethod
+    async def initialize(self) -> None:
+        """
+        Initialize provider resources.
+        """
 
-    ProviderRegistry.register(
-        provider_name="phi",
-        provider_cls=BaseProvider,
-        metadata=ProviderMeta(
-            name="phi",
-            tier=ProviderTier.SLM,
-            default_model="phi-3-mini",
-            supports_streaming=True,
-        ),
-    )
+        raise NotImplementedError
 
+    @abstractmethod
+    async def close(self) -> None:
+        """
+        Release provider resources.
+        """
 
-# Initialize built-in providers when the module is imported.
-register_default_providers()
+        raise NotImplementedError
+
+    @abstractmethod
+    async def health_check(
+        self,
+    ) -> ProviderHealth:
+        """
+        Return normalized provider health.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list_models(
+        self,
+    ) -> list[ModelInfo]:
+        """
+        Return models supported by this provider.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def chat(
+        self,
+        request: ChatRequest,
+    ) -> ChatResponse:
+        """
+        Execute a normalized chat request.
+        """
+
+        raise NotImplementedError
+
+    async def stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncIterator[StreamChunk]:
+        """
+        Stream a chat response.
+
+        Concrete providers should override this when
+        streaming is supported.
+        """
+
+        raise NotImplementedError(
+            f"Streaming is not implemented by provider "
+            f"'{self.name}'."
+        )
+
+    async def supports_model(
+        self,
+        model_id: str,
+    ) -> bool:
+        """
+        Determine whether this provider supports a model ID
+        or one of its aliases.
+        """
+
+        models = await self.list_models()
+
+        normalized = model_id.strip().lower()
+
+        return any(
+            normalized == model.id.lower()
+            or normalized in {
+                alias.lower()
+                for alias in model.aliases
+            }
+            for model in models
+        )
+
+    def ensure_initialized(self) -> None:
+        """
+        Raise when a provider operation requires initialization.
+        """
+
+        if not self._initialized:
+            raise RuntimeError(
+                f"Provider '{self.name}' has not been initialized."
+            )
+
+    def ensure_enabled(self) -> None:
+        """
+        Raise when the provider has been disabled.
+        """
+
+        if not self.config.enabled:
+            raise RuntimeError(
+                f"Provider '{self.name}' is disabled."
+            )
+
+    async def __aenter__(self) -> "BaseProvider":
+        await self.initialize()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type,
+        exc_value,
+        traceback,
+    ) -> None:
+        await self.close()
+
