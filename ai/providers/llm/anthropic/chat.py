@@ -1,11 +1,10 @@
-@'
 from __future__ import annotations
 
 import time
 from typing import Any
 
-from ai.providers.base.request import ChatRequest
-from ai.providers.base.response import ChatResponse, ChatUsage
+from ...base.request import ChatRequest
+from ...base.response import ChatResponse, ChatUsage
 
 
 class AnthropicChat:
@@ -81,8 +80,8 @@ class AnthropicChat:
         )
 
         return ChatUsage(
-            prompt_tokens=input_tokens,
-            completion_tokens=output_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
         )
 
@@ -151,4 +150,5 @@ class AnthropicChat:
 
 
 __all__ = ["AnthropicChat"]
-'@ | Set-Content ".\ai\providers\llm\anthropic\chat.py"
+
+

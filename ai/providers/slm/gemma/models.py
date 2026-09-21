@@ -1,12 +1,19 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from ...base.models import ModelCapability, ModelInfo, ProviderTier
+from ...base.models import (
+    ModelCapability,
+    ModelInfo,
+    ProviderTier,
+)
 
 
 GEMMA_MODEL_DEFINITIONS = [
     {
         "id": "google/gemma-3-1b-it",
-        "aliases": ["gemma-3-1b-it", "gemma-1b"],
+        "aliases": [
+            "gemma-3-1b-it",
+            "gemma-1b",
+        ],
         "context_window": 32768,
         "max_output_tokens": 8192,
         "input_cost_per_1m_tokens": 0.0,
@@ -16,7 +23,10 @@ GEMMA_MODEL_DEFINITIONS = [
     },
     {
         "id": "google/gemma-3-4b-it",
-        "aliases": ["gemma-3-4b-it", "gemma-4b"],
+        "aliases": [
+            "gemma-3-4b-it",
+            "gemma-4b",
+        ],
         "context_window": 32768,
         "max_output_tokens": 8192,
         "input_cost_per_1m_tokens": 0.0,
@@ -31,17 +41,19 @@ GEMMA_MODELS: list[ModelInfo] = [
     ModelInfo(
         id=item["id"],
         provider="gemma",
-        aliases=item["aliases"],
+        aliases=tuple(item["aliases"]),
         tier=ProviderTier.SLM,
-        capabilities=[
-            ModelCapability.CHAT,
-            ModelCapability.REASONING,
-            ModelCapability.CODE,
-            ModelCapability.STREAMING,
-            ModelCapability.LONG_CONTEXT,
-            ModelCapability.STRUCTURED_OUTPUT,
-            ModelCapability.JSON,
-        ],
+        capabilities=frozenset(
+            {
+                ModelCapability.CHAT,
+                ModelCapability.REASONING,
+                ModelCapability.CODE,
+                ModelCapability.STREAMING,
+                ModelCapability.LONG_CONTEXT,
+                ModelCapability.STRUCTURED_OUTPUT,
+                ModelCapability.JSON,
+            }
+        ),
         context_window=item["context_window"],
         max_output_tokens=item["max_output_tokens"],
         input_cost_per_1m_tokens=item["input_cost_per_1m_tokens"],
@@ -56,4 +68,10 @@ GEMMA_MODELS: list[ModelInfo] = [
         },
     )
     for item in GEMMA_MODEL_DEFINITIONS
+]
+
+
+__all__ = [
+    "GEMMA_MODEL_DEFINITIONS",
+    "GEMMA_MODELS",
 ]

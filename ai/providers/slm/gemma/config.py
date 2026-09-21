@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from dataclasses import dataclass
@@ -6,11 +6,9 @@ from dataclasses import dataclass
 from ...base.config import ProviderConfig
 
 
-@dataclass
+@dataclass(frozen=True)
 class GemmaConfig(ProviderConfig):
     provider_id: str = "gemma"
-    enabled: bool = True
-    api_key: str | None = None
 
     device: str = "auto"
     torch_dtype: str = "auto"
@@ -21,14 +19,52 @@ class GemmaConfig(ProviderConfig):
 
     huggingface_token: str | None = None
 
-    def __post_init__(self) -> None:
-        if not self.huggingface_token:
-            self.huggingface_token = os.getenv("HF_TOKEN")
+    @classmethod
+    def from_env(cls) -> "GemmaConfig":
+        return cls(
+            provider_id="gemma",
+            api_key=None,
+            enabled=_env_bool("MODELNOW_GEMMA_ENABLED", True),
+            device=os.getenv("MODELNOW_GEMMA_DEVICE", "auto"),
+            torch_dtype=os.getenv("MODELNOW_GEMMA_TORCH_DTYPE", "auto"),
+            trust_remote_code=_env_bool(
+                "MODELNOW_GEMMA_TRUST_REMOTE_CODE",
+                False,
+            ),
+            default_model=os.getenv(
+                "MODELNOW_GEMMA_MODEL",
+                "google/gemma-3-1b-it",
+            ),
+            max_new_tokens=int(
+                os.getenv("MODELNOW_GEMMA_MAX_NEW_TOKENS", "512")
+            ),
+            huggingface_token=os.getenv("HF_TOKEN"),
+            timeout_seconds=float(
+                os.getenv("MODELNOW_PROVIDER_TIMEOUT", "60")
+            ),
+            connect_timeout_seconds=float(
+                os.getenv("MODELNOW_PROVIDER_CONNECT_TIMEOUT", "10")
+            ),
+            max_retries=int(
+                os.getenv("MODELNOW_PROVIDER_MAX_RETRIES", "3")
+            ),
+            retry_enabled=_env_bool(
+                "MODELNOW_PROVIDER_RETRY_ENABLED",
+                True,
+            ),
+            organization=None,
+        )
 
-        model = os.getenv("MODELNOW_GEMMA_MODEL")
-        if model:
-            self.default_model = model
 
-        device = os.getenv("MODELNOW_GEMMA_DEVICE")
-        if device:
-            self.device = device
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+
+    if value is None:
+        return default
+
+    return value.strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }

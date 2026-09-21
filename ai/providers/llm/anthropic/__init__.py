@@ -1,5 +1,4 @@
-Set-Content -Path ".\ai\providers\llm\anthropic\__init__.py" -Value @'
-from .chat import AnthropicChat
+﻿from .chat import AnthropicChat
 from .client import AnthropicClient
 from .config import AnthropicConfig
 from .models import (
@@ -20,4 +19,4 @@ __all__ = [
     "AnthropicStream",
     "AnthropicTokenizer",
 ]
-'@
+

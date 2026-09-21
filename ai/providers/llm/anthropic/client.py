@@ -1,12 +1,11 @@
-Set-Content ".\ai\providers\llm\anthropic\client.py" @'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from ai.providers.base.client import BaseClient
-from ai.providers.base.config import ProviderConfig
+from ...base.client import BaseClient
+from ...base.config import ProviderConfig
 
 from .config import AnthropicConfig
 
@@ -80,4 +79,4 @@ class AnthropicClient(BaseClient):
 
 
 __all__ = ["AnthropicClient"]
-'@
+

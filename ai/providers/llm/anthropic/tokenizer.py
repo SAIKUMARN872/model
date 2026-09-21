@@ -1,5 +1,4 @@
-Set-Content ".\ai\providers\llm\anthropic\tokenizer.py" @'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import math
 
@@ -57,4 +56,4 @@ class AnthropicTokenizer:
 
 
 __all__ = ["AnthropicTokenizer"]
-'@
+

@@ -1,9 +1,8 @@
-Set-Content ".\ai\providers\llm\anthropic\models.py" @'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ai.providers.base.models import ModelCapability, ProviderTier
+from ...base.models import ModelCapability, ProviderTier
 
 
 @dataclass(frozen=True)
@@ -85,4 +84,4 @@ DEFAULT_ANTHROPIC_MODELS = (
         capabilities=_COMMON_CAPABILITIES,
     ),
 )
-'@
+

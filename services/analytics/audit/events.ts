@@ -1,154 +1,76 @@
-// services/analytics/audit/events.ts
+export type AuditAction =
+  | "created"
+  | "updated"
+  | "deleted"
+  | "executed"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "login"
+  | "logout"
+  | "model_selected"
+  | "model_routed"
+  | "model_fallback"
+  | "anomaly_detected"
+  | "configuration_changed";
 
-export const AUDIT_EVENT_VERSION = 1 as const;
-
-export type AuditSeverity =
-  | "debug"
-  | "info"
-  | "warning"
-  | "error"
-  | "critical";
-
-export type AuditOutcome =
-  | "success"
-  | "failure"
-  | "denied"
-  | "partial";
-
-export type AuditActorType =
-  | "user"
-  | "service"
-  | "system"
-  | "agent"
-  | "api_key";
-
-export type AuditEventType =
-  | "authentication"
-  | "authorization"
-  | "data_access"
-  | "data_change"
-  | "configuration"
-  | "security"
-  | "model_request"
-  | "model_response"
-  | "agent_action"
+export type AuditResource =
+  | "model"
+  | "model_route"
   | "workflow"
-  | "billing"
-  | "api"
-  | "system"
+  | "agent"
+  | "dataset"
+  | "fine_tuning_job"
   | "anomaly"
-  | "custom";
+  | "organization"
+  | "workspace"
+  | "user"
+  | "api_key"
+  | "policy"
+  | "configuration"
+  | "system";
 
-export interface AuditActor {
-  type: AuditActorType;
-  id: string;
-  name?: string;
-  email?: string;
-}
-
-export interface AuditResource {
-  type: string;
-  id?: string;
-  name?: string;
-}
-
-export interface AuditRequestContext {
-  requestId?: string;
-  correlationId?: string;
-  traceId?: string;
-  spanId?: string;
-  ipAddress?: string;
-  userAgent?: string;
-  serviceName?: string;
-  serviceVersion?: string;
-  environment?: string;
-}
+export type AuditOutcome = "success" | "failure" | "denied";
 
 export interface AuditEvent {
   id: string;
-  version: typeof AUDIT_EVENT_VERSION;
 
-  organizationId: string;
+  organizationId?: string;
+  workspaceId?: string;
+  userId?: string;
 
-  timestamp: string;
+  action: AuditAction;
+  resource: AuditResource;
 
-  eventType: AuditEventType;
-  action: string;
-
-  severity: AuditSeverity;
-  outcome: AuditOutcome;
-
-  actor: AuditActor;
-
-  resource?: AuditResource;
-
-  request?: AuditRequestContext;
-
-  message?: string;
-
-  metadata: Record<string, unknown>;
-
-  previousEventHash?: string;
-  eventHash: string;
-}
-
-export interface CreateAuditEventInput {
-  organizationId: string;
-
-  eventType: AuditEventType;
-  action: string;
-
-  severity?: AuditSeverity;
-  outcome?: AuditOutcome;
-
-  actor: AuditActor;
-
-  resource?: AuditResource;
-
-  request?: AuditRequestContext;
-
-  message?: string;
-
-  metadata?: Record<string, unknown>;
-
-  timestamp?: Date;
-}
-
-export interface AuditQuery {
-  organizationId: string;
-
-  eventType?: AuditEventType;
-  action?: string;
-  severity?: AuditSeverity;
-  outcome?: AuditOutcome;
-
-  actorId?: string;
-  resourceType?: string;
   resourceId?: string;
 
+  outcome: AuditOutcome;
+
+  timestamp: Date;
+
+  ipAddress?: string;
+  userAgent?: string;
   requestId?: string;
-  correlationId?: string;
 
-  from?: Date;
-  to?: Date;
+  source?: string;
 
-  limit?: number;
+  changes?: Record<string, unknown>;
+
+  metadata?: Record<string, unknown>;
 }
 
-export interface AuditLoggerOptions {
-  maxEventsPerOrganization?: number;
-  defaultQueryLimit?: number;
-  maxQueryLimit?: number;
-
-  /**
-   * Keys that must never be persisted in audit metadata.
-   */
-  sensitiveKeys?: string[];
+export function createAuditEvent(
+  input: Omit<AuditEvent, "id" | "timestamp">
+): AuditEvent {
+  return {
+    ...input,
+    id: generateAuditId(),
+    timestamp: new Date(),
+  };
 }
 
-export interface AuditLoggerHealth {
-  healthy: boolean;
-  totalEvents: number;
-  organizations: number;
-  maxEventsPerOrganization: number;
+function generateAuditId(): string {
+  return `audit_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
 }

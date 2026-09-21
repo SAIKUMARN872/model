@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import time
@@ -211,4 +210,4 @@ def is_retryable_status(status_code: int) -> bool:
         503,
         504,
     }
-'@ | Set-Content ".\ai\providers\llm\anthropic\utils.py" -Encoding UTF8
+

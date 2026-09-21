@@ -1,10 +1,9 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, AsyncIterator
 
-from ai.providers.base.request import ChatRequest
-from ai.providers.base.response import ChatUsage, StreamChunk
+from ...base.request import ChatRequest
+from ...base.response import ChatUsage, StreamChunk
 
 
 class AnthropicStream:
@@ -149,4 +148,4 @@ class AnthropicStream:
 
 
 __all__ = ["AnthropicStream"]
-'@ | Set-Content ".\ai\providers\llm\anthropic\stream.py"
+

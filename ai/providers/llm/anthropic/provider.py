@@ -1,20 +1,19 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
 
-from ai.providers.base.models import (
+from ...base.models import (
     ModelInfo,
     ProviderHealth,
     ProviderStatus,
 )
-from ai.providers.base.request import ChatRequest
-from ai.providers.base.response import (
+from ...base.request import ChatRequest
+from ...base.response import (
     ChatResponse,
     StreamChunk,
 )
-from ai.providers.base.provider import BaseProvider
+from ...base.provider import BaseProvider
 
 from .chat import AnthropicChat
 from .client import AnthropicClient
@@ -143,4 +142,4 @@ class AnthropicProvider(BaseProvider):
 
 
 __all__ = ["AnthropicProvider"]
-'@ | Set-Content ".\ai\providers\llm\anthropic\provider.py"
+

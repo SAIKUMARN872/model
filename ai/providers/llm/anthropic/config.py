@@ -1,20 +1,24 @@
-@'
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 
+from ...base.config import ProviderConfig
+
 
 @dataclass(frozen=True)
-class AnthropicConfig:
-    api_key: str | None = None
-    base_url: str | None = None
-    timeout_seconds: float = 60.0
-    max_retries: int = 3
+class AnthropicConfig(ProviderConfig):
+    """
+    Anthropic-specific configuration layered on top of
+    the shared ModelNow ProviderConfig contract.
+    """
+
+    provider_id: str = "anthropic"
 
     @classmethod
     def from_env(cls) -> "AnthropicConfig":
         return cls(
+            provider_id="anthropic",
             api_key=os.getenv("ANTHROPIC_API_KEY"),
             base_url=os.getenv("ANTHROPIC_BASE_URL"),
             timeout_seconds=float(
@@ -41,4 +45,3 @@ class AnthropicConfig:
 
 
 __all__ = ["AnthropicConfig"]
-'@ | Set-Content -Encoding UTF8 ".\ai\providers\llm\anthropic\config.py"
