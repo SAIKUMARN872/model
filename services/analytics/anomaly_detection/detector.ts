@@ -1,617 +1,923 @@
-import {
+/**
+ * ModelNow Analytics
+ * Production Anomaly Detection Engine
+ *
+ * Responsibilities:
+ *
+ * 1. Maintain historical observations
+ * 2. Build rolling baselines
+ * 3. Execute anomaly rules
+ * 4. Calculate anomaly confidence
+ * 5. Deduplicate repeated anomalies
+ * 6. Return explainable detection results
+ *
+ * This class is intentionally independent from PostgreSQL/Redis.
+ * Persistence can be connected through a repository layer later.
+ */
+
+import type {
   AnomalyMetric,
   AnomalyRule,
-  AnomalyRuleType,
+  AnomalyRuleContext,
+  AnomalyRuleResult,
   AnomalySeverity,
-  DEFAULT_ANOMALY_RULES,
-} from "./rules";
+} from "./rules.js";
 
-export interface MetricPoint {
-  timestamp: Date;
-  value: number;
-}
+import {
+  createDefaultAnomalyRules,
+} from "./rules.js";
 
-export interface AnomalyDetectionRequest {
+export interface Observation {
+  organizationId: string;
+
   metric: AnomalyMetric;
 
-  entityId: string;
+  value: number;
 
-  entityType:
-    | "model"
-    | "provider"
-    | "tenant"
-    | "workspace"
-    | "organization"
-    | "system";
+  timestamp: Date;
 
-  points: MetricPoint[];
-
-  rules?: AnomalyRule[];
-
-  metadata?: Record<string, unknown>;
+  dimensions?: {
+    provider?: string;
+    model?: string;
+    capability?: string;
+    environment?: string;
+  };
 }
 
 export interface Anomaly {
   id: string;
 
-  ruleId: string;
+  fingerprint: string;
+
+  organizationId: string;
 
   metric: AnomalyMetric;
 
-  entityId: string;
-
-  entityType: AnomalyDetectionRequest["entityType"];
-
-  type: AnomalyRuleType;
+  ruleId: string;
 
   severity: AnomalySeverity;
 
-  score: number;
+  confidence: number;
+
+  title: string;
+
+  description: string;
+
+  recommendation?: string;
 
   currentValue: number;
 
-  expectedValue?: number;
+  baselineValue: number;
 
-  deviation?: number;
+  percentageChange: number;
 
-  detectedAt: Date;
+  zScore?: number;
 
-  reason: string;
+  sampleSize: number;
 
-  metadata?: Record<string, unknown>;
+  dimensions: Record<string, string>;
+
+  firstDetectedAt: Date;
+
+  lastDetectedAt: Date;
+
+  occurrences: number;
+
+  status: "open" | "acknowledged" | "resolved";
+
+  evidence: Record<string, unknown>;
 }
 
-export class AnomalyDetector {
-  private readonly defaultRules: AnomalyRule[];
+export interface DetectorConfig {
+  /**
+   * Number of observations used for baseline calculation.
+   */
+  baselineWindowSize?: number;
 
-  constructor(
-    rules: AnomalyRule[] = DEFAULT_ANOMALY_RULES,
-  ) {
-    this.defaultRules = rules;
+  /**
+   * Minimum observations required before anomaly detection.
+   */
+  minimumSampleSize?: number;
+
+  /**
+   * How long a duplicate anomaly remains suppressed.
+   */
+  deduplicationWindowMs?: number;
+
+  /**
+   * Maximum observations retained per metric/dimension.
+   */
+  maxObservationsPerSeries?: number;
+
+  /**
+   * Rules can be injected for testing/custom deployments.
+   */
+  rules?: AnomalyRule[];
+}
+
+interface SeriesState {
+  observations: Observation[];
+
+  lastAnomalies: Map<string, Anomaly>;
+}
+
+function stableHash(input: string): string {
+  let hash = 2166136261;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const code = input.charCodeAt(index);
+    hash ^= code;
+    hash = Math.imul(hash, 16777619);
   }
 
-  detect(
-    request: AnomalyDetectionRequest,
-  ): Anomaly[] {
-    this.validateRequest(request);
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
 
-    const rules = (
-      request.rules ?? this.defaultRules
-    ).filter(
-      (rule) =>
-        rule.enabled &&
-        rule.metric === request.metric,
+function createStableHash(input: string): string {
+  return stableHash(input);
+}
+
+function createRandomId(): string {
+  const cryptoApi =
+    globalThis.crypto;
+
+  if (
+    cryptoApi &&
+    typeof cryptoApi.randomUUID === "function"
+  ) {
+    return cryptoApi.randomUUID();
+  }
+
+  return `anomaly-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+const DEFAULT_CONFIG: Required<
+  Omit<DetectorConfig, "rules">
+> = {
+  baselineWindowSize: 100,
+  minimumSampleSize: 20,
+  deduplicationWindowMs: 5 * 60 * 1000,
+  maxObservationsPerSeries: 10_000,
+};
+
+export class AnomalyDetector {
+  private readonly config: Required<
+    Omit<DetectorConfig, "rules">
+  >;
+
+  private readonly rules: AnomalyRule[];
+
+  private readonly series =
+    new Map<string, SeriesState>();
+
+  constructor(config: DetectorConfig = {}) {
+    this.config = {
+      baselineWindowSize:
+        config.baselineWindowSize ??
+        DEFAULT_CONFIG.baselineWindowSize,
+
+      minimumSampleSize:
+        config.minimumSampleSize ??
+        DEFAULT_CONFIG.minimumSampleSize,
+
+      deduplicationWindowMs:
+        config.deduplicationWindowMs ??
+        DEFAULT_CONFIG.deduplicationWindowMs,
+
+      maxObservationsPerSeries:
+        config.maxObservationsPerSeries ??
+        DEFAULT_CONFIG.maxObservationsPerSeries,
+    };
+
+    this.rules =
+      config.rules ??
+      createDefaultAnomalyRules();
+  }
+
+  /**
+   * Record one observation.
+   */
+  record(observation: Observation): void {
+    this.validateObservation(observation);
+
+    const key =
+      this.createSeriesKey(observation);
+
+    let state = this.series.get(key);
+
+    if (!state) {
+      state = {
+        observations: [],
+        lastAnomalies: new Map(),
+      };
+
+      this.series.set(key, state);
+    }
+
+    state.observations.push({
+      ...observation,
+      timestamp: new Date(
+        observation.timestamp,
+      ),
+    });
+
+    /**
+     * Keep memory bounded.
+     */
+    if (
+      state.observations.length >
+      this.config.maxObservationsPerSeries
+    ) {
+      const removeCount =
+        state.observations.length -
+        this.config.maxObservationsPerSeries;
+
+      state.observations.splice(
+        0,
+        removeCount,
+      );
+    }
+  }
+
+  /**
+   * Record many observations efficiently.
+   */
+  recordBatch(
+    observations: Observation[],
+  ): void {
+    for (const observation of observations) {
+      this.record(observation);
+    }
+  }
+
+  /**
+   * Detect anomalies for a newly recorded observation.
+   */
+  detect(
+    observation: Observation,
+  ): Anomaly[] {
+    this.record(observation);
+
+    return this.detectCurrent(
+      observation,
     );
+  }
+
+  /**
+   * Detect anomalies without recording the observation.
+   */
+  detectCurrent(
+    observation: Observation,
+  ): Anomaly[] {
+    this.validateObservation(observation);
+
+    const key =
+      this.createSeriesKey(observation);
+
+    const state =
+      this.series.get(key);
+
+    if (!state) {
+      return [];
+    }
+
+    const historicalObservations =
+      state.observations
+        .filter(
+          (item) =>
+            item.timestamp.getTime() <
+            observation.timestamp.getTime(),
+        )
+        .slice(
+          -this.config.baselineWindowSize,
+        );
+
+    if (
+      historicalObservations.length <
+      this.config.minimumSampleSize
+    ) {
+      return [];
+    }
+
+    const baseline =
+      this.calculateBaseline(
+        historicalObservations,
+      );
+
+    const percentageChange =
+      this.calculatePercentageChange(
+        observation.value,
+        baseline.mean,
+      );
+
+    const applicableRules =
+      this.rules.filter(
+        (rule) =>
+          rule.metric === observation.metric,
+      );
 
     const anomalies: Anomaly[] = [];
 
-    for (const rule of rules) {
+    for (const rule of applicableRules) {
+      const context: AnomalyRuleContext = {
+        organizationId:
+          observation.organizationId,
+
+        metric: observation.metric,
+
+        currentValue:
+          observation.value,
+
+        baselineValue:
+          baseline.mean,
+
+        standardDeviation:
+          baseline.standardDeviation,
+
+        percentageChange,
+
+        sampleSize:
+          historicalObservations.length,
+
+        dimensions:
+          observation.dimensions,
+
+        timestamp:
+          observation.timestamp,
+      };
+
+      const result =
+        rule.evaluate(context);
+
+      if (!result.triggered) {
+        continue;
+      }
+
       const anomaly =
-        this.evaluateRule(
-          request,
-          rule,
+        this.createAnomaly(
+          observation,
+          result,
+          baseline,
+          historicalObservations.length,
         );
 
-      if (anomaly) {
-        anomalies.push(anomaly);
+      const deduplicated =
+        this.deduplicate(
+          state,
+          anomaly,
+        );
+
+      if (deduplicated) {
+        anomalies.push(
+          deduplicated,
+        );
       }
     }
 
     return anomalies;
   }
 
-  detectHighestRisk(
-    request: AnomalyDetectionRequest,
-  ): Anomaly | null {
-    const anomalies =
-      this.detect(request);
-
-    if (anomalies.length === 0) {
-      return null;
-    }
-
-    return anomalies.reduce(
-      (highest, current) =>
-        current.score > highest.score
-          ? current
-          : highest,
-    );
-  }
-
-  private evaluateRule(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-  ): Anomaly | null {
-    switch (rule.type) {
-      case "threshold":
-        return this.evaluateThreshold(
-          request,
-          rule,
-        );
-
-      case "spike":
-        return this.evaluateSpike(
-          request,
-          rule,
-        );
-
-      case "drop":
-        return this.evaluateDrop(
-          request,
-          rule,
-        );
-
-      case "z_score":
-        return this.evaluateZScore(
-          request,
-          rule,
-        );
-
-      case "trend":
-        return this.evaluateTrend(
-          request,
-          rule,
-        );
-
-      default:
-        return null;
-    }
-  }
-
-  private evaluateThreshold(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-  ): Anomaly | null {
-    if (
-      rule.threshold === undefined ||
-      request.points.length === 0
-    ) {
-      return null;
-    }
-
-    const current =
-      request.points[
-        request.points.length - 1
-      ];
-
-    if (current.value <= rule.threshold) {
-      return null;
-    }
-
-    const excess =
-      current.value - rule.threshold;
-
-    const score = this.normalizeScore(
-      excess /
-        Math.max(
-          Math.abs(rule.threshold),
-          1,
-        ),
-    );
-
-    return this.createAnomaly(
-      request,
-      rule,
-      score,
-      current.value,
-      rule.threshold,
-      excess,
-      `Current ${request.metric} value ${current.value} exceeded threshold ${rule.threshold}.`,
-      current.timestamp,
-    );
-  }
-
-  private evaluateSpike(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-  ): Anomaly | null {
-    if (
-      request.points.length < 2 ||
-      rule.percentageThreshold ===
-        undefined
-    ) {
-      return null;
-    }
-
-    const current =
-      request.points[
-        request.points.length - 1
-      ];
-
-    const previous =
-      request.points[
-        request.points.length - 2
-      ];
-
-    if (previous.value === 0) {
-      return null;
-    }
-
-    const change =
-      (current.value - previous.value) /
-      Math.abs(previous.value);
-
-    if (
-      change < rule.percentageThreshold
-    ) {
-      return null;
-    }
-
-    const score = this.normalizeScore(
-      change /
-        Math.max(
-          rule.percentageThreshold,
-          0.01,
-        ),
-    );
-
-    return this.createAnomaly(
-      request,
-      rule,
-      score,
-      current.value,
-      previous.value,
-      current.value - previous.value,
-      `Metric increased by ${(change * 100).toFixed(2)}% compared with the previous measurement.`,
-      current.timestamp,
-    );
-  }
-
-  private evaluateDrop(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-  ): Anomaly | null {
-    if (
-      request.points.length < 2 ||
-      rule.percentageThreshold ===
-        undefined
-    ) {
-      return null;
-    }
-
-    const current =
-      request.points[
-        request.points.length - 1
-      ];
-
-    const previous =
-      request.points[
-        request.points.length - 2
-      ];
-
-    if (previous.value === 0) {
-      return null;
-    }
-
-    const change =
-      (previous.value - current.value) /
-      Math.abs(previous.value);
-
-    if (
-      change < rule.percentageThreshold
-    ) {
-      return null;
-    }
-
-    const score = this.normalizeScore(
-      change /
-        Math.max(
-          rule.percentageThreshold,
-          0.01,
-        ),
-    );
-
-    return this.createAnomaly(
-      request,
-      rule,
-      score,
-      current.value,
-      previous.value,
-      current.value - previous.value,
-      `Metric decreased by ${(change * 100).toFixed(2)}% compared with the previous measurement.`,
-      current.timestamp,
-    );
-  }
-
-  private evaluateZScore(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-  ): Anomaly | null {
-    if (
-      rule.zScoreThreshold ===
-        undefined ||
-      request.points.length < 3
-    ) {
-      return null;
+  /**
+   * Calculate statistical baseline.
+   */
+  calculateBaseline(
+    observations: Observation[],
+  ): {
+    mean: number;
+    standardDeviation: number;
+    min: number;
+    max: number;
+    sampleSize: number;
+  } {
+    if (observations.length === 0) {
+      return {
+        mean: 0,
+        standardDeviation: 0,
+        min: 0,
+        max: 0,
+        sampleSize: 0,
+      };
     }
 
     const values =
-      request.points.map(
-        (point) => point.value,
+      observations.map(
+        (observation) =>
+          observation.value,
       );
 
-    const current =
-      values[values.length - 1];
-
-    const historical =
-      values.slice(0, -1);
-
-    const average =
-      this.mean(historical);
-
-    const deviation =
-      this.standardDeviation(
-        historical,
-      );
-
-    if (deviation === 0) {
-      return null;
-    }
-
-    const zScore =
-      Math.abs(
-        (current - average) /
-          deviation,
-      );
-
-    if (
-      zScore <
-      rule.zScoreThreshold
-    ) {
-      return null;
-    }
-
-    const score = this.normalizeScore(
-      zScore /
-        rule.zScoreThreshold,
-    );
-
-    return this.createAnomaly(
-      request,
-      rule,
-      score,
-      current,
-      average,
-      current - average,
-      `Current value is ${zScore.toFixed(2)} standard deviations from the historical mean.`,
-      request.points[
-        request.points.length - 1
-      ].timestamp,
-    );
-  }
-
-  private evaluateTrend(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-  ): Anomaly | null {
-    const windowSize =
-      rule.windowSize ?? 5;
-
-    if (
-      request.points.length <
-      windowSize
-    ) {
-      return null;
-    }
-
-    const points =
-      request.points.slice(
-        -windowSize,
-      );
-
-    let increasing = true;
-    let decreasing = true;
-
-    for (let i = 1; i < points.length; i++) {
-      if (
-        points[i].value <=
-        points[i - 1].value
-      ) {
-        increasing = false;
-      }
-
-      if (
-        points[i].value >=
-        points[i - 1].value
-      ) {
-        decreasing = false;
-      }
-    }
-
-    if (!increasing && !decreasing) {
-      return null;
-    }
-
-    const first = points[0].value;
-    const last =
-      points[points.length - 1].value;
-
-    if (first === 0) {
-      return null;
-    }
-
-    const change =
-      Math.abs(last - first) /
-      Math.abs(first);
-
-    const threshold =
-      rule.percentageThreshold ?? 0.5;
-
-    if (change < threshold) {
-      return null;
-    }
-
-    const score = this.normalizeScore(
-      change / threshold,
-    );
-
-    return this.createAnomaly(
-      request,
-      rule,
-      score,
-      last,
-      first,
-      last - first,
-      `Metric shows a sustained ${increasing ? "increasing" : "decreasing"} trend of ${(change * 100).toFixed(2)}%.`,
-      points[points.length - 1]
-        .timestamp,
-    );
-  }
-
-  private createAnomaly(
-    request: AnomalyDetectionRequest,
-    rule: AnomalyRule,
-    score: number,
-    currentValue: number,
-    expectedValue: number,
-    deviation: number,
-    reason: string,
-    timestamp: Date,
-  ): Anomaly {
-    return {
-      id: this.generateId(),
-
-      ruleId: rule.id,
-
-      metric: request.metric,
-
-      entityId: request.entityId,
-
-      entityType: request.entityType,
-
-      type: rule.type,
-
-      severity: this.calculateSeverity(
-        score,
-      ),
-
-      score,
-
-      currentValue,
-
-      expectedValue,
-
-      deviation,
-
-      detectedAt: timestamp,
-
-      reason,
-
-      metadata: {
-        ...request.metadata,
-        ruleName: rule.name,
-      },
-    };
-  }
-
-  private calculateSeverity(
-    score: number,
-  ): AnomalySeverity {
-    if (score >= 1) {
-      return "critical";
-    }
-
-    if (score >= 0.75) {
-      return "high";
-    }
-
-    if (score >= 0.5) {
-      return "medium";
-    }
-
-    return "low";
-  }
-
-  private normalizeScore(
-    score: number,
-  ): number {
-    return Math.max(
-      0,
-      Math.min(1, score),
-    );
-  }
-
-  private mean(
-    values: number[],
-  ): number {
-    if (values.length === 0) {
-      return 0;
-    }
-
-    return (
+    const mean =
       values.reduce(
         (sum, value) =>
           sum + value,
         0,
-      ) / values.length
-    );
-  }
-
-  private standardDeviation(
-    values: number[],
-  ): number {
-    if (values.length === 0) {
-      return 0;
-    }
-
-    const average =
-      this.mean(values);
+      ) / values.length;
 
     const variance =
       values.reduce(
         (sum, value) =>
           sum +
           Math.pow(
-            value - average,
+            value - mean,
             2,
           ),
         0,
       ) / values.length;
 
-    return Math.sqrt(variance);
+    return {
+      mean,
+
+      standardDeviation:
+        Math.sqrt(variance),
+
+      min: Math.min(...values),
+
+      max: Math.max(...values),
+
+      sampleSize: values.length,
+    };
   }
 
-  private validateRequest(
-    request: AnomalyDetectionRequest,
+  /**
+   * Get currently stored observations.
+   */
+  getObservations(
+    organizationId: string,
+    metric: AnomalyMetric,
+    dimensions?: Observation["dimensions"],
+  ): Observation[] {
+    const key =
+      this.createSeriesKey({
+        organizationId,
+        metric,
+        value: 0,
+        timestamp: new Date(),
+        dimensions,
+      });
+
+    return [
+      ...(this.series.get(key)
+        ?.observations ?? []),
+    ];
+  }
+
+  /**
+   * Get active anomalies for an organization.
+   */
+  getOpenAnomalies(
+    organizationId: string,
+  ): Anomaly[] {
+    const anomalies: Anomaly[] = [];
+
+    for (const state of this.series.values()) {
+      for (const anomaly of state.lastAnomalies.values()) {
+        if (
+          anomaly.organizationId ===
+            organizationId &&
+          anomaly.status === "open"
+        ) {
+          anomalies.push(anomaly);
+        }
+      }
+    }
+
+    return anomalies.sort(
+      (a, b) =>
+        b.lastDetectedAt.getTime() -
+        a.lastDetectedAt.getTime(),
+    );
+  }
+
+  /**
+   * Acknowledge an anomaly.
+   */
+  acknowledge(
+    anomalyId: string,
+  ): boolean {
+    for (const state of this.series.values()) {
+      for (const anomaly of state.lastAnomalies.values()) {
+        if (anomaly.id === anomalyId) {
+          anomaly.status =
+            "acknowledged";
+
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Resolve an anomaly.
+   */
+  resolve(
+    anomalyId: string,
+  ): boolean {
+    for (const state of this.series.values()) {
+      for (const anomaly of state.lastAnomalies.values()) {
+        if (anomaly.id === anomalyId) {
+          anomaly.status =
+            "resolved";
+
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Health information for monitoring the detector.
+   */
+  health(): {
+    seriesCount: number;
+    observationCount: number;
+    anomalyCount: number;
+  } {
+    let observationCount = 0;
+    let anomalyCount = 0;
+
+    for (const state of this.series.values()) {
+      observationCount +=
+        state.observations.length;
+
+      anomalyCount +=
+        state.lastAnomalies.size;
+    }
+
+    return {
+      seriesCount:
+        this.series.size,
+
+      observationCount,
+
+      anomalyCount,
+    };
+  }
+
+  /**
+   * ------------------------------------------------------------
+   * Internal methods
+   * ------------------------------------------------------------
+   */
+
+  private createSeriesKey(
+    observation: Observation,
+  ): string {
+    const dimensions =
+      this.normalizeDimensions(
+        observation.dimensions,
+      );
+
+    const dimensionString =
+      Object.entries(dimensions)
+        .sort(([a], [b]) =>
+          a.localeCompare(b),
+        )
+        .map(
+          ([key, value]) =>
+            `${key}=${value ?? ""}`,
+        )
+        .join("|");
+
+    return [
+      observation.organizationId,
+      observation.metric,
+      dimensionString,
+    ].join("::");
+  }
+
+  private createFingerprint(
+    observation: Observation,
+    ruleId: string,
+  ): string {
+    const raw = JSON.stringify({
+      organizationId:
+        observation.organizationId,
+
+      metric:
+        observation.metric,
+
+      ruleId,
+
+      dimensions:
+        observation.dimensions ?? {},
+    });
+
+    return createStableHash(raw);
+  }
+
+  private createAnomaly(
+    observation: Observation,
+    result: AnomalyRuleResult,
+    baseline: {
+      mean: number;
+      standardDeviation: number;
+    },
+    sampleSize: number,
+  ): Anomaly {
+    const zScore =
+      baseline.standardDeviation > 0
+        ? (
+            observation.value -
+            baseline.mean
+          ) /
+          baseline.standardDeviation
+        : undefined;
+
+    const percentageChange =
+      this.calculatePercentageChange(
+        observation.value,
+        baseline.mean,
+      );
+
+    const fingerprint =
+      this.createFingerprint(
+        observation,
+        this.findRuleId(result),
+      );
+
+    const now =
+      new Date();
+
+    return {
+      id: createRandomId(),
+
+      fingerprint,
+
+      organizationId:
+        observation.organizationId,
+
+      metric:
+        observation.metric,
+
+      ruleId:
+        this.findRuleId(result),
+
+      severity:
+        result.severity,
+
+      confidence:
+        result.confidence,
+
+      title:
+        result.title,
+
+      description:
+        result.description,
+
+      recommendation:
+        result.recommendation,
+
+      currentValue:
+        observation.value,
+
+      baselineValue:
+        baseline.mean,
+
+      percentageChange,
+
+      zScore,
+
+      sampleSize,
+
+      dimensions:
+        this.normalizeDimensions(
+          observation.dimensions,
+        ),
+
+      firstDetectedAt: now,
+
+      lastDetectedAt: now,
+
+      occurrences: 1,
+
+      status: "open",
+
+      evidence: {
+        ...result.evidence,
+
+        baselineMean:
+          baseline.mean,
+
+        baselineStandardDeviation:
+          baseline.standardDeviation,
+      },
+    };
+  }
+
+  /**
+   * Rules currently return no rule ID in their result,
+   * therefore infer it from the metric/result title.
+   *
+   * For larger deployments this should be replaced by
+   * adding `ruleId` directly to AnomalyRuleResult.
+   */
+  private findRuleId(
+    result: AnomalyRuleResult,
+  ): string {
+    const title =
+      result.title.toLowerCase();
+
+    if (title.includes("latency")) {
+      return "latency.high";
+    }
+
+    if (title.includes("cost")) {
+      return "cost.high";
+    }
+
+    if (title.includes("error")) {
+      return "error_rate.high";
+    }
+
+    if (title.includes("quality")) {
+      return "quality.degradation";
+    }
+
+    if (title.includes("token")) {
+      return "token_usage.spike";
+    }
+
+    if (title.includes("request")) {
+      return "request_volume.spike";
+    }
+
+    if (title.includes("cache")) {
+      return "cache_hit_rate.degradation";
+    }
+
+    return "unknown";
+  }
+
+  private deduplicate(
+    state: SeriesState,
+    anomaly: Anomaly,
+  ): Anomaly | null {
+    const existing =
+      state.lastAnomalies.get(
+        anomaly.fingerprint,
+      );
+
+    if (!existing) {
+      state.lastAnomalies.set(
+        anomaly.fingerprint,
+        anomaly,
+      );
+
+      return anomaly;
+    }
+
+    const elapsed =
+      anomaly.firstDetectedAt.getTime() -
+      existing.lastDetectedAt.getTime();
+
+    /**
+     * Outside suppression window:
+     * create a fresh anomaly.
+     */
+    if (
+      elapsed >
+      this.config.deduplicationWindowMs
+    ) {
+      state.lastAnomalies.set(
+        anomaly.fingerprint,
+        anomaly,
+      );
+
+      return anomaly;
+    }
+
+    /**
+     * Same incident.
+     * Update existing anomaly instead
+     * of creating thousands of alerts.
+     */
+    existing.lastDetectedAt =
+      anomaly.lastDetectedAt;
+
+    existing.occurrences += 1;
+
+    existing.currentValue =
+      anomaly.currentValue;
+
+    existing.percentageChange =
+      anomaly.percentageChange;
+
+    existing.confidence =
+      Math.max(
+        existing.confidence,
+        anomaly.confidence,
+      );
+
+    existing.evidence = {
+      ...existing.evidence,
+
+      latestValue:
+        anomaly.currentValue,
+
+      latestPercentageChange:
+        anomaly.percentageChange,
+
+      latestTimestamp:
+        anomaly.lastDetectedAt.toISOString(),
+    };
+
+    return existing;
+  }
+
+  private calculatePercentageChange(
+    current: number,
+    baseline: number,
+  ): number {
+    if (baseline === 0) {
+      if (current === 0) {
+        return 0;
+      }
+
+      return 100;
+    }
+
+    return (
+      ((current - baseline) /
+        Math.abs(baseline)) *
+      100
+    );
+  }
+
+  private normalizeDimensions(
+    dimensions:
+      | Observation["dimensions"]
+      | undefined,
+  ): Record<string, string> {
+    const defaults = {
+      provider: "openai",
+      model: "gpt-production",
+      capability: "chat",
+      environment: "production",
+    };
+
+    const merged = {
+      ...defaults,
+      ...(dimensions ?? {}),
+    };
+
+    return Object.fromEntries(
+      Object.entries(merged)
+        .filter(
+          ([, value]) =>
+            value !== undefined,
+        )
+        .map(
+          ([key, value]) =>
+            [key, String(value)],
+        ),
+    );
+  }
+
+  private validateObservation(
+    observation: Observation,
   ): void {
-    if (!request.entityId) {
+    if (
+      !observation.organizationId
+        .trim()
+    ) {
       throw new Error(
-        "entityId is required",
+        "organizationId is required",
       );
     }
 
-    if (!request.metric) {
+    if (
+      !Number.isFinite(
+        observation.value,
+      )
+    ) {
       throw new Error(
-        "metric is required",
+        "Observation value must be a finite number",
       );
     }
 
-    if (!Array.isArray(request.points)) {
+    if (
+      !(observation.timestamp instanceof Date) ||
+      Number.isNaN(
+        observation.timestamp.getTime(),
+      )
+    ) {
       throw new Error(
-        "points must be an array",
+        "Observation timestamp must be a valid Date",
       );
-    }
-
-    for (const point of request.points) {
-      if (
-        !Number.isFinite(point.value)
-      ) {
-        throw new Error(
-          "Metric values must be finite numbers",
-        );
-      }
-
-      if (!(point.timestamp instanceof Date)) {
-        throw new Error(
-          "Metric timestamps must be Date instances",
-        );
-      }
     }
   }
+}
 
-  private generateId(): string {
-    return `anomaly_${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
-  }
+/**
+ * Factory used by the application.
+ */
+export function createAnomalyDetector(
+  config: DetectorConfig = {},
+): AnomalyDetector {
+  return new AnomalyDetector(
+    config,
+  );
 }

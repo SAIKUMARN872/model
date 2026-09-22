@@ -1,0 +1,14 @@
+﻿{
+  "name": "modelnow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:anomaly": "tsx --test services/analytics/anomaly_detection/test_anomaly_detection.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
