@@ -8,6 +8,7 @@
     "test:anomaly": "tsx --test services/analytics/anomaly_detection/test_anomaly_detection.ts"
   },
   "devDependencies": {
+    "@types/node": "^24.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
