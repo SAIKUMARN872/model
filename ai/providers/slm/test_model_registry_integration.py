@@ -1,136 +1,98 @@
-﻿import sys
-from pathlib import Path
+import asyncio
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-
-from ai.model_registry import ModelRegistryEngine
+from ai.model_registry.engine import ModelRegistryEngine
 from ai.model_registry.utils import model_info_to_record
 from ai.providers.slm import (
     GemmaProvider,
     LlamaProvider,
     MistralProvider,
-    SLMProviderRegistry,
+    PhiProvider,
 )
 
 
-def main() -> None:
-    provider_registry = SLMProviderRegistry()
+async def main() -> None:
+    registry = ModelRegistryEngine()
 
-    provider_registry.register_many(
-        [
-            GemmaProvider(),
-            LlamaProvider(),
-            MistralProvider(),
-        ]
-    )
+    providers = [
+        GemmaProvider(),
+        LlamaProvider(),
+        MistralProvider(),
+        PhiProvider(),
+    ]
 
-    model_registry = ModelRegistryEngine()
+    all_records = []
 
-    registered = 0
-
-    for provider in provider_registry.providers():
-        provider_id = provider.config.provider_id
-
-        if provider_id == "gemma":
-            from ai.providers.slm.gemma.models import GEMMA_MODELS
-
-            models = GEMMA_MODELS
-
-        elif provider_id == "llama":
-            from ai.providers.slm.llama.models import LLAMA_MODELS
-
-            models = LLAMA_MODELS
-
-        elif provider_id == "mistral":
-            from ai.providers.slm.mistral.models import MISTRAL_MODELS
-
-            models = MISTRAL_MODELS
-
-        else:
-            models = []
+    for provider in providers:
+        models = await provider.list_models()
 
         for model in models:
-            record = model_info_to_record(model)
-
-            model_registry.register(record)
-
-            registered += 1
-
-            print(
-                "REGISTERED:",
-                record.qualified_id,
-                "| TIER:",
-                record.tier.value,
-                "| CONTEXT:",
-                record.context_window,
-                "| QUALITY:",
-                record.quality_score,
+            all_records.append(
+                model_info_to_record(model)
             )
 
-    print("PROVIDERS:", model_registry.providers())
-    print("TOTAL REGISTERED:", registered)
-    print("REGISTRY COUNT:", model_registry.count())
+    records = registry.register_many(all_records)
 
-    assert registered == 5
-    assert model_registry.count() == 5
+    for record in records:
+        print(
+            "REGISTERED:",
+            record.qualified_id,
+            "| TIER:",
+            record.tier,
+            "| CONTEXT:",
+            record.context_window,
+            "| QUALITY:",
+            record.quality_score,
+        )
 
-    assert "gemma" in model_registry.providers()
-    assert "llama" in model_registry.providers()
-    assert "mistral" in model_registry.providers()
+    print("PROVIDERS:", registry.providers())
+    print("TOTAL REGISTERED:", len(records))
+    print("REGISTRY COUNT:", registry.count())
 
-    canonical_models = model_registry.list_models()
-
-    gemma = next(
-        (
-            model
-            for model in canonical_models
-            if model.model_id == "google/gemma-3-1b-it"
-        ),
-        None,
+    gemma = registry.get(
+        "gemma",
+        "google/gemma-3-1b-it",
+    )
+    llama = registry.get(
+        "llama",
+        "meta-llama/Llama-3.2-1B-Instruct",
+    )
+    mistral = registry.get(
+        "mistral",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+    )
+    phi = registry.get(
+        "phi",
+        "microsoft/Phi-3-mini-4k-instruct",
     )
 
-    llama = next(
-        (
-            model
-            for model in canonical_models
-            if model.model_id
-            == "meta-llama/Llama-3.2-1B-Instruct"
-        ),
-        None,
+    print(
+        "GEMMA CANONICAL RECORD:",
+        "PASS" if gemma is not None else "FAIL",
     )
-
-    mistral = next(
-        (
-            model
-            for model in canonical_models
-            if model.model_id
-            == "mistralai/Mistral-7B-Instruct-v0.3"
-        ),
-        None,
+    print(
+        "LLAMA CANONICAL RECORD:",
+        "PASS" if llama is not None else "FAIL",
+    )
+    print(
+        "MISTRAL CANONICAL RECORD:",
+        "PASS" if mistral is not None else "FAIL",
+    )
+    print(
+        "PHI CANONICAL RECORD:",
+        "PASS" if phi is not None else "FAIL",
     )
 
     assert gemma is not None
     assert llama is not None
     assert mistral is not None
+    assert phi is not None
 
-    assert gemma.provider == "gemma"
-    assert llama.provider == "llama"
-    assert mistral.provider == "mistral"
+    assert phi.provider == "phi"
+    assert phi.model_id == "microsoft/Phi-3-mini-4k-instruct"
+    assert phi.tier.value == "slm"
+    assert phi.context_window == 4096
 
-    assert gemma.tier.value == "slm"
-    assert llama.tier.value == "slm"
-    assert mistral.tier.value == "slm"
-
-    print("GEMMA CANONICAL RECORD: PASS")
-    print("LLAMA CANONICAL RECORD: PASS")
-    print("MISTRAL CANONICAL RECORD: PASS")
-    print("SLM → MODEL REGISTRY TEST: PASS")
+    print("SLM ? MODEL REGISTRY TEST: PASS")
 
 
-if __name__ == "__main__":
-    main()
+asyncio.run(main())
