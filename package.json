@@ -1,14 +1,15 @@
-﻿{
+{
   "name": "modelnow",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
-  "workspaces": [
-    "apps/*",
-    "services/*"
-  ],
+  "type": "module",
   "scripts": {
-    "dev:api": "npm --workspace apps/api run dev",
-    "dev:web": "npm --workspace apps/web run dev",
-    "build": "npm run build --workspaces"
+    "typecheck": "tsc --noEmit",
+    "test:anomaly": "tsx --test services/analytics/anomaly_detection/test_anomaly_detection.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }
