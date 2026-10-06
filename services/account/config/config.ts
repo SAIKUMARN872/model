@@ -1,281 +1,125 @@
-/// <reference types="node" />
+// services/account/config/settings.ts
 
-export type EnvironmentName =
+export type AppEnvironment =
   | "development"
   | "test"
   | "staging"
   | "production";
 
-export interface AuthConfig {
-  environment: EnvironmentName;
-
-  jwt: {
-    secret: string;
-    issuer: string;
-    audience: string;
-    expiresInSeconds: number;
-  };
-
-  session: {
-    expiresInSeconds: number;
-    maxActiveSessionsPerUser: number;
-  };
-
-  password: {
-    minLength: number;
-    maxLength: number;
-  };
-
-  mfa: {
-    enabled: boolean;
-    issuer: string;
-  };
-
-  oauth: {
-    google: {
-      enabled: boolean;
-      clientId: string;
-      clientSecret: string;
-      redirectUri: string;
-    };
-    github: {
-      enabled: boolean;
-      clientId: string;
-      clientSecret: string;
-      redirectUri: string;
-    };
-  };
-
-  security: {
-    encryptionKey: string;
-    maxLoginAttempts: number;
-    lockoutDurationSeconds: number;
-  };
-}
-
-function getEnv(name: string, fallback: string): string {
+function getEnv(
+  name: string,
+  defaultValue?: string,
+): string {
   const value = process.env[name];
 
-  if (value === undefined || value.trim() === "") {
-    return fallback;
+  if (value !== undefined && value.trim() !== "") {
+    return value;
   }
 
-  return value.trim();
+  if (defaultValue !== undefined) {
+    return defaultValue;
+  }
+
+  throw new Error(`Missing required environment variable: ${name}`);
 }
 
-function getNumberEnv(name: string, fallback: number): number {
+function getNumber(
+  name: string,
+  defaultValue: number,
+): number {
   const value = process.env[name];
 
-  if (value === undefined || value.trim() === "") {
-    return fallback;
+  if (!value) {
+    return defaultValue;
   }
 
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed)) {
-    throw new Error(`Invalid numeric environment variable: ${name}`);
+    throw new Error(
+      `Environment variable ${name} must be a valid number`,
+    );
   }
 
   return parsed;
 }
 
-function getBooleanEnv(name: string, fallback: boolean): boolean {
-  const value = process.env[name];
+export interface AppSettings {
+  serviceName: string;
+  serviceVersion: string;
+  environment: AppEnvironment;
 
-  if (value === undefined || value.trim() === "") {
-    return fallback;
-  }
+  host: string;
+  port: number;
 
-  const normalized = value.trim().toLowerCase();
+  databaseUrl: string;
 
-  if (
-    normalized === "true" ||
-    normalized === "1" ||
-    normalized === "yes" ||
-    normalized === "on"
-  ) {
-    return true;
-  }
+  jwtSecret: string;
+  bcryptRounds: number;
 
-  if (
-    normalized === "false" ||
-    normalized === "0" ||
-    normalized === "no" ||
-    normalized === "off"
-  ) {
-    return false;
-  }
-
-  throw new Error(`Invalid boolean environment variable: ${name}`);
+  logLevel: string;
 }
 
-function getEnvironment(): EnvironmentName {
-  const value = getEnv("NODE_ENV", "development").toLowerCase();
+export function loadSettings(): AppSettings {
+  const environment = getEnv(
+    "NODE_ENV",
+    "development",
+  ) as AppEnvironment;
 
-  switch (value) {
-    case "development":
-    case "test":
-    case "staging":
-    case "production":
-      return value;
-
-    default:
-      throw new Error(`Unsupported NODE_ENV: ${value}`);
+  if (
+    ![
+      "development",
+      "test",
+      "staging",
+      "production",
+    ].includes(environment)
+  ) {
+    throw new Error(
+      `Invalid NODE_ENV: ${environment}`,
+    );
   }
-}
-
-export function loadAuthConfig(): AuthConfig {
-  const environment = getEnvironment();
 
   return {
+    serviceName: getEnv(
+      "ACCOUNT_SERVICE_NAME",
+      "modelnow-account-service",
+    ),
+
+    serviceVersion: getEnv(
+      "ACCOUNT_SERVICE_VERSION",
+      "1.0.0",
+    ),
+
     environment,
 
-    jwt: {
-      secret: getEnv(
-        "AUTH_JWT_SECRET",
-        "modelnow-development-jwt-secret-change-me",
-      ),
-      issuer: getEnv("AUTH_JWT_ISSUER", "modelnow"),
-      audience: getEnv("AUTH_JWT_AUDIENCE", "modelnow-api"),
-      expiresInSeconds: getNumberEnv(
-        "AUTH_JWT_EXPIRES_IN_SECONDS",
-        3600,
-      ),
-    },
+    host: getEnv(
+      "ACCOUNT_SERVICE_HOST",
+      "0.0.0.0",
+    ),
 
-    session: {
-      expiresInSeconds: getNumberEnv(
-        "AUTH_SESSION_EXPIRES_IN_SECONDS",
-        86400,
-      ),
-      maxActiveSessionsPerUser: getNumberEnv(
-        "AUTH_MAX_ACTIVE_SESSIONS",
-        5,
-      ),
-    },
+    port: getNumber(
+      "ACCOUNT_SERVICE_PORT",
+      4001,
+    ),
 
-    password: {
-      minLength: getNumberEnv("AUTH_PASSWORD_MIN_LENGTH", 8),
-      maxLength: getNumberEnv("AUTH_PASSWORD_MAX_LENGTH", 128),
-    },
+    databaseUrl: getEnv(
+      "DATABASE_URL",
+      "postgresql://localhost:5432/modelnow",
+    ),
 
-    mfa: {
-      enabled: getBooleanEnv("AUTH_MFA_ENABLED", true),
-      issuer: getEnv("AUTH_MFA_ISSUER", "ModelNow"),
-    },
+    jwtSecret: getEnv(
+      "JWT_SECRET",
+      "development-only-secret",
+    ),
 
-    oauth: {
-      google: {
-        enabled: getBooleanEnv("AUTH_GOOGLE_ENABLED", false),
-        clientId: getEnv("GOOGLE_CLIENT_ID", ""),
-        clientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
-        redirectUri: getEnv(
-          "GOOGLE_REDIRECT_URI",
-          "http://localhost:3000/auth/google/callback",
-        ),
-      },
+    bcryptRounds: getNumber(
+      "BCRYPT_ROUNDS",
+      12,
+    ),
 
-      github: {
-        enabled: getBooleanEnv("AUTH_GITHUB_ENABLED", false),
-        clientId: getEnv("GITHUB_CLIENT_ID", ""),
-        clientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
-        redirectUri: getEnv(
-          "GITHUB_REDIRECT_URI",
-          "http://localhost:3000/auth/github/callback",
-        ),
-      },
-    },
-
-    security: {
-      encryptionKey: getEnv(
-        "AUTH_ENCRYPTION_KEY",
-        "modelnow-development-encryption-key",
-      ),
-      maxLoginAttempts: getNumberEnv("AUTH_MAX_LOGIN_ATTEMPTS", 5),
-      lockoutDurationSeconds: getNumberEnv(
-        "AUTH_LOCKOUT_DURATION_SECONDS",
-        900,
-      ),
-    },
+    logLevel: getEnv(
+      "LOG_LEVEL",
+      "info",
+    ),
   };
-}
-
-export function validateAuthConfig(config: AuthConfig): void {
-  if (!config.jwt.secret || config.jwt.secret.length < 16) {
-    throw new Error(
-      "AUTH_JWT_SECRET must contain at least 16 characters",
-    );
-  }
-
-  if (!config.jwt.issuer.trim()) {
-    throw new Error("JWT issuer is required");
-  }
-
-  if (!config.jwt.audience.trim()) {
-    throw new Error("JWT audience is required");
-  }
-
-  if (config.jwt.expiresInSeconds <= 0) {
-    throw new Error("JWT expiration must be greater than zero");
-  }
-
-  if (config.session.expiresInSeconds <= 0) {
-    throw new Error("Session expiration must be greater than zero");
-  }
-
-  if (config.session.maxActiveSessionsPerUser <= 0) {
-    throw new Error("Maximum active sessions must be greater than zero");
-  }
-
-  if (
-    config.password.minLength < 1 ||
-    config.password.maxLength < config.password.minLength
-  ) {
-    throw new Error("Invalid password length configuration");
-  }
-
-  if (
-    !config.security.encryptionKey ||
-    config.security.encryptionKey.length < 16
-  ) {
-    throw new Error(
-      "AUTH_ENCRYPTION_KEY must contain at least 16 characters",
-    );
-  }
-
-  if (config.security.maxLoginAttempts <= 0) {
-    throw new Error("Maximum login attempts must be greater than zero");
-  }
-
-  if (config.security.lockoutDurationSeconds <= 0) {
-    throw new Error("Lockout duration must be greater than zero");
-  }
-
-  if (config.oauth.google.enabled) {
-    if (
-      !config.oauth.google.clientId ||
-      !config.oauth.google.clientSecret
-    ) {
-      throw new Error(
-        "Google OAuth requires client ID and client secret",
-      );
-    }
-  }
-
-  if (config.oauth.github.enabled) {
-    if (
-      !config.oauth.github.clientId ||
-      !config.oauth.github.clientSecret
-    ) {
-      throw new Error(
-        "GitHub OAuth requires client ID and client secret",
-      );
-    }
-  }
-}
-
-export const authConfig: AuthConfig = loadAuthConfig();
-
-if (authConfig.environment !== "test") {
-  validateAuthConfig(authConfig);
 }
