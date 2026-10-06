@@ -2,16 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 from typing import Any, Mapping
 
 import boto3
 from botocore.exceptions import (
     BotoCoreError,
     ClientError,
-    ConnectTimeoutError,
-    EndpointConnectionError,
-    ReadTimeoutError,
 )
 
 from ai.providers.base.client import BaseClient
@@ -22,18 +18,21 @@ from ai.providers.base.exceptions import (
     ProviderError,
     ProviderModelNotFoundError,
     ProviderRateLimitError,
+    ProviderResponseError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from ai.providers.base.response import StreamChunk
 
 from .config import AWSBedrockConfig
 
 
 class AWSBedrockClient(BaseClient):
-    """AWS Bedrock Runtime transport for ModelNow."""
+    """
+    Low-level AWS Bedrock Runtime client for ModelNow.
 
-    provider_name = "aws_bedrock"
+    The client owns AWS transport only. Provider-level normalization
+    remains in provider.py, chat.py, and stream.py.
+    """
 
     def __init__(
         self,
@@ -44,66 +43,53 @@ class AWSBedrockClient(BaseClient):
         super().__init__(config)
 
         self.bedrock_config = (
-            bedrock_config or AWSBedrockConfig.from_env()
+            bedrock_config
+            if bedrock_config is not None
+            else AWSBedrockConfig.from_env()
         )
 
-        self._session: boto3.Session | None = None
-        self._client: Any | None = None
-
-    @property
-    def initialized(self) -> bool:
-        return self._client is not None and not self.closed
+        self.client: Any | None = None
 
     async def initialize(self) -> None:
-        if self._client is not None:
+        """
+        Create the boto3 Bedrock Runtime client.
+        """
+
+        if self.client is not None:
             return
 
-        def create_client() -> tuple[boto3.Session, Any]:
+        session_kwargs = (
+            self.bedrock_config.boto3_session_kwargs()
+        )
+
+        client_kwargs = (
+            self.bedrock_config.client_kwargs()
+        )
+
+        def create_client() -> Any:
             session = boto3.Session(
-                **self.bedrock_config.boto3_session_kwargs()
+                **session_kwargs
             )
 
-            client = session.client(
+            return session.client(
                 "bedrock-runtime",
-                **self.bedrock_config.client_kwargs(),
+                **client_kwargs,
             )
 
-            return session, client
+        self.client = await asyncio.to_thread(
+            create_client
+        )
 
-        try:
-            self._session, self._client = await asyncio.to_thread(
-                create_client
-            )
-            self._closed = False
-
-        except Exception as exc:
-            self._raise_mapped_error(exc)
+        self._closed = False
 
     async def close(self) -> None:
-        client = self._client
+        """
+        Close the underlying boto3 client.
+        """
 
-        if client is not None:
-            close_method = getattr(client, "close", None)
+        self.client = None
 
-            if close_method is not None:
-                try:
-                    await asyncio.to_thread(close_method)
-                except Exception:
-                    pass
-
-        self._client = None
-        self._session = None
         await super().close()
-
-    def _require_client(self) -> Any:
-        if self._client is None or self.closed:
-            raise ProviderError(
-                "AWS Bedrock client is not initialized.",
-                provider=self.provider_name,
-                retryable=False,
-            )
-
-        return self._client
 
     async def request(
         self,
@@ -115,28 +101,39 @@ class AWSBedrockClient(BaseClient):
         params: Mapping[str, str] | None = None,
     ) -> Any:
         """
-        BaseClient transport contract.
+        Implement the ModelNow BaseClient transport contract.
 
-        Bedrock Converse operations are exposed through dedicated
-        methods because boto3 is operation-oriented rather than
-        HTTP-path-oriented.
+        Supported logical paths:
+        - converse
+        - model/converse
+        - converse-stream
+        - model/converse-stream
         """
 
-        operation = path.strip("/").lower()
+        if self.client is None:
+            await self.initialize()
 
-        if operation in {"converse", "model/converse"}:
-            if not isinstance(json, dict):
-                raise ProviderError(
-                    "Bedrock Converse payload must be a dictionary.",
-                    provider=self.provider_name,
-                    retryable=False,
-                )
+        normalized_path = path.strip("/").lower()
 
-            return await self.converse(json)
+        if normalized_path in {
+            "converse",
+            "model/converse",
+        }:
+            return await self.converse(
+                json or {}
+            )
 
-        raise ProviderError(
-            f"Unsupported AWS Bedrock operation: {path}",
-            provider=self.provider_name,
+        if normalized_path in {
+            "converse-stream",
+            "model/converse-stream",
+        }:
+            return await self.converse_stream(
+                json or {}
+            )
+
+        raise ProviderResponseError(
+            f"Unsupported AWS Bedrock path: {path}",
+            provider="aws_bedrock",
             retryable=False,
         )
 
@@ -144,206 +141,265 @@ class AWSBedrockClient(BaseClient):
         self,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        client = self._require_client()
+        """
+        Execute Bedrock Converse.
+        """
 
-        try:
-            return await asyncio.to_thread(
-                client.converse,
-                **payload,
-            )
+        if self.client is None:
+            await self.initialize()
 
-        except (
-            ClientError,
-            BotoCoreError,
-            ConnectTimeoutError,
-            EndpointConnectionError,
-            ReadTimeoutError,
-        ) as exc:
-            self._raise_mapped_error(exc)
+        assert self.client is not None
 
-        raise AssertionError("Unreachable")
+        def invoke() -> dict[str, Any]:
+            try:
+                return self.client.converse(
+                    **payload
+                )
+
+            except Exception as exc:
+                raise self._map_exception(exc) from exc
+
+        return await asyncio.to_thread(
+            invoke
+        )
 
     async def converse_stream(
         self,
         payload: dict[str, Any],
-    ) -> AsyncIterator[dict[str, Any]]:
-        client = self._require_client()
+    ):
+        """
+        Execute Bedrock ConverseStream.
 
-        try:
-            response = await asyncio.to_thread(
-                client.converse_stream,
-                **payload,
+        The boto3 response contains an iterable stream. We bridge
+        that synchronous iterator into the async ModelNow provider
+        layer.
+        """
+
+        if self.client is None:
+            await self.initialize()
+
+        assert self.client is not None
+
+        def start_stream() -> Any:
+            try:
+                response = self.client.converse_stream(
+                    **payload
+                )
+
+                return response["stream"]
+
+            except Exception as exc:
+                raise self._map_exception(exc) from exc
+
+        event_stream = await asyncio.to_thread(
+            start_stream
+        )
+
+        while True:
+            event = await asyncio.to_thread(
+                self._next_event,
+                event_stream,
             )
 
-            event_stream = response.get("stream")
+            if event is _END_OF_STREAM:
+                break
 
-            if event_stream is None:
-                raise ProviderError(
-                    "AWS Bedrock returned no streaming event stream.",
-                    provider=self.provider_name,
-                    retryable=False,
-                )
-
-            iterator = iter(event_stream)
-
-            while True:
-                event, finished = await asyncio.to_thread(
-                    self._next_event,
-                    iterator,
-                )
-
-                if finished:
-                    break
-
-                yield event
-
-        except ProviderError:
-            raise
-
-        except (
-            ClientError,
-            BotoCoreError,
-            ConnectTimeoutError,
-            EndpointConnectionError,
-            ReadTimeoutError,
-        ) as exc:
-            self._raise_mapped_error(exc)
+            yield event
 
     @staticmethod
     def _next_event(
         iterator: Any,
-    ) -> tuple[dict[str, Any] | None, bool]:
+    ) -> Any:
+        """
+        Safely retrieve the next event from a synchronous
+        boto3 iterator.
+        """
+
         try:
-            return next(iterator), False
+            return next(iterator)
         except StopIteration:
-            return None, True
+            return _END_OF_STREAM
+        except Exception as exc:
+            raise AWSBedrockClient._map_exception(
+                exc
+            ) from exc
 
     @staticmethod
-    def _error_code(exc: Exception) -> str:
-        response = getattr(exc, "response", None)
-
-        if isinstance(response, dict):
-            error = response.get("Error", {})
-
-            if isinstance(error, dict) and error.get("Code"):
-                return str(error["Code"])
-
-        return exc.__class__.__name__
-
-    def _raise_mapped_error(self, exc: Exception) -> None:
-        code = self._error_code(exc)
-
-        response = getattr(exc, "response", None)
-
-        status_code = None
-        request_id = None
-
-        if isinstance(response, dict):
-            metadata = response.get("ResponseMetadata", {})
-
-            if isinstance(metadata, dict):
-                status_code = metadata.get("HTTPStatusCode")
-                request_id = metadata.get("RequestId")
-
-        message = str(exc)
-
-        if code in {
-            "UnrecognizedClientException",
-            "InvalidClientTokenId",
-            "ExpiredTokenException",
-            "InvalidSignatureException",
-        }:
-            raise ProviderAuthenticationError(
-                message,
-                provider=self.provider_name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=False,
-            ) from exc
-
-        if code in {
-            "AccessDeniedException",
-            "UnauthorizedOperation",
-        }:
-            raise ProviderAuthorizationError(
-                message,
-                provider=self.provider_name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=False,
-            ) from exc
-
-        if code in {
-            "ResourceNotFoundException",
-            "ModelNotReadyException",
-            "ModelNotSupportedException",
-        }:
-            raise ProviderModelNotFoundError(
-                message,
-                provider=self.provider_name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=False,
-            ) from exc
-
-        if code in {
-            "ThrottlingException",
-            "TooManyRequestsException",
-            "ServiceQuotaExceededException",
-        }:
-            raise ProviderRateLimitError(
-                message,
-                provider=self.provider_name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=True,
-            ) from exc
-
-        if code in {
-            "ServiceUnavailableException",
-            "InternalServerException",
-            "InternalFailure",
-        }:
-            raise ProviderUnavailableError(
-                message,
-                provider=self.provider_name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=True,
-            ) from exc
+    def _map_exception(
+        exc: Exception,
+    ) -> ProviderError:
+        """
+        Translate boto3/botocore exceptions into ModelNow
+        provider exceptions.
+        """
 
         if isinstance(
             exc,
-            (ConnectTimeoutError, ReadTimeoutError),
+            ProviderError,
         ):
-            raise ProviderTimeoutError(
-                message,
-                provider=self.provider_name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=True,
-            ) from exc
+            return exc
 
         if isinstance(
             exc,
-            (EndpointConnectionError, BotoCoreError),
+            (TimeoutError, asyncio.TimeoutError),
         ):
-            raise ProviderUnavailableError(
+            return ProviderTimeoutError(
+                "AWS Bedrock request timed out.",
+                provider="aws_bedrock",
+                retryable=True,
+                details={
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
+            )
+
+        if isinstance(
+            exc,
+            BotoCoreError,
+        ):
+            return ProviderUnavailableError(
+                "AWS Bedrock transport error.",
+                provider="aws_bedrock",
+                retryable=True,
+                details={
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
+            )
+
+        if isinstance(
+            exc,
+            ClientError,
+        ):
+            error = exc.response.get(
+                "Error",
+                {},
+            )
+
+            code = str(
+                error.get(
+                    "Code",
+                    "Unknown",
+                )
+            )
+
+            message = str(
+                error.get(
+                    "Message",
+                    str(exc),
+                )
+            )
+
+            status_code = (
+                exc.response
+                .get("ResponseMetadata", {})
+                .get("HTTPStatusCode")
+            )
+
+            request_id = (
+                exc.response
+                .get("ResponseMetadata", {})
+                .get("RequestId")
+            )
+
+            if code in {
+                "UnrecognizedClientException",
+                "InvalidClientTokenId",
+            }:
+                return ProviderAuthenticationError(
+                    message,
+                    provider="aws_bedrock",
+                    status_code=status_code,
+                    request_id=request_id,
+                    retryable=False,
+                    details={
+                        "aws_error_code": code,
+                    },
+                )
+
+            if code in {
+                "AccessDeniedException",
+                "UnauthorizedException",
+            }:
+                return ProviderAuthorizationError(
+                    message,
+                    provider="aws_bedrock",
+                    status_code=status_code,
+                    request_id=request_id,
+                    retryable=False,
+                    details={
+                        "aws_error_code": code,
+                    },
+                )
+
+            if code in {
+                "ThrottlingException",
+                "TooManyRequestsException",
+            }:
+                return ProviderRateLimitError(
+                    message,
+                    provider="aws_bedrock",
+                    status_code=status_code,
+                    request_id=request_id,
+                    retryable=True,
+                    details={
+                        "aws_error_code": code,
+                    },
+                )
+
+            if code in {
+                "ResourceNotFoundException",
+                "ModelNotFoundException",
+                "ValidationException",
+            }:
+                return ProviderModelNotFoundError(
+                    message,
+                    provider="aws_bedrock",
+                    status_code=status_code,
+                    request_id=request_id,
+                    retryable=False,
+                    details={
+                        "aws_error_code": code,
+                    },
+                )
+
+            if status_code is not None and status_code >= 500:
+                return ProviderUnavailableError(
+                    message,
+                    provider="aws_bedrock",
+                    status_code=status_code,
+                    request_id=request_id,
+                    retryable=True,
+                    details={
+                        "aws_error_code": code,
+                    },
+                )
+
+            return ProviderResponseError(
                 message,
-                provider=self.provider_name,
+                provider="aws_bedrock",
                 status_code=status_code,
                 request_id=request_id,
-                retryable=True,
-            ) from exc
+                retryable=False,
+                details={
+                    "aws_error_code": code,
+                },
+            )
 
-        raise ProviderError(
-            message,
-            provider=self.provider_name,
-            status_code=status_code,
-            request_id=request_id,
+        return ProviderResponseError(
+            str(exc),
+            provider="aws_bedrock",
             retryable=False,
-        ) from exc
+            details={
+                "error_type": type(exc).__name__,
+            },
+        )
 
 
-__all__ = ["AWSBedrockClient"]
+_END_OF_STREAM = object()
+
+
+__all__ = [
+    "AWSBedrockClient",
+]
 '@ | Set-Content ".\ai\providers\llm\aws_bedrock\client.py"

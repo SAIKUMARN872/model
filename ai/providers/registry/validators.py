@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Iterable
 
@@ -33,10 +32,6 @@ class RegistryValidator:
         - provider discovery
         - CI validation
     """
-
-    # --------------------------------------------------------------
-    # Provider validation
-    # --------------------------------------------------------------
 
     @classmethod
     def validate_provider(
@@ -91,10 +86,6 @@ class RegistryValidator:
 
         for model in provider.models:
             cls.validate_model(model)
-
-    # --------------------------------------------------------------
-    # Model validation
-    # --------------------------------------------------------------
 
     @classmethod
     def validate_model(
@@ -179,10 +170,6 @@ class RegistryValidator:
                     f"{capability!r}"
                 )
 
-    # --------------------------------------------------------------
-    # Batch validation
-    # --------------------------------------------------------------
-
     @classmethod
     def validate_models(
         cls,
@@ -222,4 +209,3 @@ class RegistryValidator:
                 )
 
             seen.add(provider.provider_id)
-'@ | Set-Content ".\ai\providers\registry\validators.py" -Encoding UTF8

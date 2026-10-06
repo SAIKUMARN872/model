@@ -1,81 +1,37 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import inspect
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 from ..base.provider import BaseProvider
-from ..models import ProviderMetadata
 
 
 class DependencyInjector:
-    """
-    Lightweight dependency injection layer for providers.
+    """Lightweight dependency injection helper for provider construction."""
 
-    Keeps credentials/configuration outside provider business logic.
+    def __init__(self, dependencies: dict[str, Any] | None = None) -> None:
+        self._dependencies = dict(dependencies or {})
 
-    Future enterprise integrations can inject:
-
-        secrets manager
-        telemetry
-        tracing
-        HTTP clients
-        rate limiters
-        retry policies
-        feature flags
-    """
-
-    def __init__(
-        self,
-        dependencies: Optional[
-            Dict[str, Any]
-        ] = None,
-    ) -> None:
-
-        self._dependencies = dict(
-            dependencies or {}
-        )
-
-    def add(
-        self,
-        name: str,
-        dependency: Any,
-    ) -> None:
-
+    def add(self, name: str, dependency: Any) -> None:
         self._dependencies[name] = dependency
 
-    def get(
-        self,
-        name: str,
-        default: Any = None,
-    ) -> Any:
-
-        return self._dependencies.get(
-            name,
-            default,
-        )
+    def get(self, name: str, default: Any = None) -> Any:
+        return self._dependencies.get(name, default)
 
     def build(
         self,
-        provider_class: Type[BaseProvider],
-        metadata: ProviderMetadata,
+        provider_class: type[BaseProvider],
         **overrides: Any,
     ) -> BaseProvider:
+        if not issubclass(provider_class, BaseProvider):
+            raise TypeError(
+                f"{provider_class.__name__} must inherit from BaseProvider."
+            )
 
-        available = dict(
-            self._dependencies
-        )
+        available = dict(self._dependencies)
+        available.update(overrides)
 
-        available.update(
-            overrides
-        )
-
-        available["metadata"] = metadata
-
-        signature = inspect.signature(
-            provider_class.__init__
-        )
-
+        signature = inspect.signature(provider_class.__init__)
         parameters = signature.parameters
 
         accepted = {
@@ -84,7 +40,7 @@ class DependencyInjector:
             if key in parameters
         }
 
-        return provider_class(
-            **accepted
-        )
-'@ | Set-Content ".\ai\providers\provider_factory\injector.py" -Encoding UTF8
+        return provider_class(**accepted)
+
+
+__all__ = ["DependencyInjector"]

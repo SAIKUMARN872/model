@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
@@ -57,14 +56,24 @@ class AIRegistry:
     def register_provider(
         self,
         provider: ProviderMetadata,
+        *,
+        provider_class: type,
+        overwrite: bool = False,
     ) -> None:
+        """
+        Register provider metadata and its concrete provider class.
 
-        RegistryValidator.validate_provider(
-            provider
-        )
+        Provider metadata may contain model metadata. Those models
+        are registered after the provider itself is registered.
+        """
+
+        RegistryValidator.validate_provider(provider)
 
         self.providers.register(
-            provider
+            name=provider.provider_id,
+            provider_class=provider_class,
+            metadata=provider,
+            overwrite=overwrite,
         )
 
         for model in provider.models:
@@ -181,4 +190,3 @@ class AIRegistry:
             ),
             "capabilities": self.capabilities.count(),
         }
-'@ | Set-Content ".\ai\providers\registry\registry.py" -Encoding UTF8

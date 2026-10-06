@@ -1,0 +1,26 @@
+﻿from decimal import Decimal
+
+
+DEFAULT_CURRENCY = "USD"
+
+DEFAULT_INPUT_COST_PER_1K_TOKENS = Decimal("0")
+DEFAULT_OUTPUT_COST_PER_1K_TOKENS = Decimal("0")
+
+MIN_TOKEN_COUNT = 0
+TOKENS_PER_1K = 1000
+
+PRICING_VERSION = "1.0"
+
+COST_PRECISION = 8
+
+BUDGET_WARNING_THRESHOLD = Decimal("0.80")
+BUDGET_CRITICAL_THRESHOLD = Decimal("0.95")
+
+SUPPORTED_COST_UNITS = (
+    "token",
+    "request",
+    "second",
+    "minute",
+)
+
+COST_ENGINE_VERSION = "1.0.0"
