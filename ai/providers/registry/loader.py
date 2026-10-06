@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
@@ -23,19 +22,15 @@ class RegistryLoader:
     Flow:
 
         Configuration
-              ↓
+              |
         RegistryLoader
-              ↓
+              |
         Validation
-              ↓
+              |
         ModelMetadata / ProviderMetadata
-              ↓
+              |
         AIRegistry
     """
-
-    # --------------------------------------------------------------
-    # Model
-    # --------------------------------------------------------------
 
     @classmethod
     def load_model(
@@ -153,10 +148,6 @@ class RegistryLoader:
 
         return models
 
-    # --------------------------------------------------------------
-    # Provider
-    # --------------------------------------------------------------
-
     @classmethod
     def load_provider(
         cls,
@@ -255,10 +246,6 @@ class RegistryLoader:
 
         return providers
 
-    # --------------------------------------------------------------
-    # Enum conversion
-    # --------------------------------------------------------------
-
     @staticmethod
     def _enum(
         enum_type,
@@ -284,4 +271,3 @@ class RegistryLoader:
                 f"value '{value}'. "
                 f"Expected one of: {valid_values}"
             ) from exc
-'@ | Set-Content ".\ai\providers\registry\loader.py" -Encoding UTF8

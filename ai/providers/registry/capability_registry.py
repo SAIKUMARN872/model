@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from threading import RLock
 from typing import Dict, Iterable, List, Set
@@ -17,19 +16,6 @@ class CapabilityRegistry:
     Production-grade capability index for ModelNow.
 
     Maps capabilities to models.
-
-    Example:
-
-        CHAT
-          ├── GPT model
-          ├── Claude model
-          ├── Gemini model
-          └── Llama model
-
-        VISION
-          ├── GPT vision model
-          ├── Gemini vision model
-          └── Qwen-VL
 
     This registry is an index.
 
@@ -55,10 +41,6 @@ class CapabilityRegistry:
 
         self._lock = RLock()
 
-    # ------------------------------------------------------------------
-    # Registration
-    # ------------------------------------------------------------------
-
     def register_model(
         self,
         model: ModelMetadata,
@@ -76,7 +58,6 @@ class CapabilityRegistry:
                 set(),
             )
 
-            # Remove stale indexes first.
             for capability in old_capabilities:
                 models = self._capabilities.get(capability)
 
@@ -107,10 +88,6 @@ class CapabilityRegistry:
     ) -> None:
         for model in models:
             self.register_model(model)
-
-    # ------------------------------------------------------------------
-    # Lookup
-    # ------------------------------------------------------------------
 
     def models_for(
         self,
@@ -160,10 +137,6 @@ class CapabilityRegistry:
                 set(),
             )
 
-    # ------------------------------------------------------------------
-    # Capability discovery
-    # ------------------------------------------------------------------
-
     def all_capabilities(self) -> List[ModelCapability]:
         with self._lock:
             return sorted(
@@ -193,10 +166,6 @@ class CapabilityRegistry:
                     set(),
                 )
             )
-
-    # ------------------------------------------------------------------
-    # Removal
-    # ------------------------------------------------------------------
 
     def remove_model(
         self,
@@ -235,10 +204,6 @@ class CapabilityRegistry:
             self._capabilities.clear()
             self._model_capabilities.clear()
 
-    # ------------------------------------------------------------------
-    # Diagnostics
-    # ------------------------------------------------------------------
-
     def snapshot(
         self,
     ) -> Dict[ModelCapability, Set[str]]:
@@ -252,4 +217,3 @@ class CapabilityRegistry:
                 for capability, models
                 in self._capabilities.items()
             }
-'@ | Set-Content ".\ai\providers\registry\capability_registry.py" -Encoding UTF8

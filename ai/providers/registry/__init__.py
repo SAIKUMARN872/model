@@ -1,5 +1,4 @@
-@'
-from .cache import CacheEntry, RegistryCache
+﻿from .cache import CacheEntry, RegistryCache
 
 from .capability_registry import (
     CapabilityRegistry,
@@ -37,4 +36,3 @@ __all__ = [
     "RegistryValidationError",
     "RegistryValidator",
 ]
-'@ | Set-Content ".\ai\providers\registry\__init__.py" -Encoding UTF8

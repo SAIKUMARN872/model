@@ -1,17 +1,11 @@
-import type { Metadata } from "next";
-import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "ModelNow",
-  description:
-    "ModelNow — One AI platform. Every model. Every task. Cost, latency and quality optimization.",
-};
+import type { ReactNode } from "react";
+import "../styles/globals.css";
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: ReactNode;
+}) {
   return (
     <html lang="en">
       <body>{children}</body>

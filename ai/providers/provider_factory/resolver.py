@@ -1,7 +1,4 @@
-@'
-from __future__ import annotations
-
-from typing import Dict, Type
+﻿from __future__ import annotations
 
 from ..base.provider import BaseProvider
 
@@ -11,77 +8,63 @@ class ProviderResolutionError(Exception):
 
 
 class ProviderResolver:
-    """
-    Maps logical provider IDs to concrete Python provider classes.
-
-    Example:
-
-        openai   -> OpenAIProvider
-        anthropic -> AnthropicProvider
-        google   -> GoogleProvider
-        deepseek -> DeepSeekProvider
-
-    This prevents application code from importing provider
-    implementations directly.
-    """
+    """Maps logical provider IDs to concrete provider classes."""
 
     def __init__(self) -> None:
-        self._providers: Dict[
-            str,
-            Type[BaseProvider],
-        ] = {}
+        self._providers: dict[str, type[BaseProvider]] = {}
 
     def register(
         self,
         provider_id: str,
-        provider_class: Type[BaseProvider],
+        provider_class: type[BaseProvider],
+        *,
+        overwrite: bool = False,
     ) -> None:
+        provider_id = provider_id.strip().lower()
 
         if not provider_id:
             raise ProviderResolutionError(
                 "Provider ID cannot be empty."
             )
 
-        if not issubclass(
-            provider_class,
-            BaseProvider,
-        ):
+        if not issubclass(provider_class, BaseProvider):
             raise ProviderResolutionError(
-                f"{provider_class.__name__} must "
-                "inherit from BaseProvider."
+                f"{provider_class.__name__} must inherit from BaseProvider."
             )
 
-        self._providers[
-            provider_id
-        ] = provider_class
+        if provider_id in self._providers and not overwrite:
+            raise ProviderResolutionError(
+                f"Provider '{provider_id}' is already registered."
+            )
 
-    def resolve(
-        self,
-        provider_id: str,
-    ) -> Type[BaseProvider]:
+        self._providers[provider_id] = provider_class
 
-        provider = self._providers.get(
-            provider_id
-        )
+    def resolve(self, provider_id: str) -> type[BaseProvider]:
+        provider_id = provider_id.strip().lower()
+
+        provider = self._providers.get(provider_id)
 
         if provider is None:
             raise ProviderResolutionError(
-                f"No implementation found for "
-                f"provider '{provider_id}'."
+                f"No implementation found for provider '{provider_id}'."
             )
 
         return provider
 
-    def exists(
-        self,
-        provider_id: str,
-    ) -> bool:
+    def exists(self, provider_id: str) -> bool:
+        return provider_id.strip().lower() in self._providers
 
-        return provider_id in self._providers
-
-    def all(
-        self,
-    ) -> Dict[str, Type[BaseProvider]]:
-
+    def all(self) -> dict[str, type[BaseProvider]]:
         return dict(self._providers)
-'@ | Set-Content ".\ai\providers\provider_factory\resolver.py" -Encoding UTF8
+
+    def remove(self, provider_id: str) -> type[BaseProvider] | None:
+        return self._providers.pop(
+            provider_id.strip().lower(),
+            None,
+        )
+
+    def clear(self) -> None:
+        self._providers.clear()
+
+
+__all__ = ["ProviderResolutionError", "ProviderResolver"]

@@ -1,10 +1,8 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from ..base.provider import BaseProvider
-from ..models import ProviderMetadata
 from ..registry.registry import AIRegistry
 from .builder import ProviderBuilder
 
@@ -14,12 +12,11 @@ class ProviderFactory:
     Central provider construction service.
 
     Responsibilities:
-        - resolve provider metadata
-        - validate provider availability
-        - construct provider implementation
-        - avoid direct provider imports across ModelNow
+        - resolve registered provider metadata
+        - verify provider implementation availability
+        - construct concrete provider instances
 
-    It does NOT perform routing.
+    Routing and inference remain outside this component.
     """
 
     def __init__(
@@ -27,7 +24,6 @@ class ProviderFactory:
         registry: AIRegistry,
         builder: ProviderBuilder,
     ) -> None:
-
         self.registry = registry
         self.builder = builder
 
@@ -36,34 +32,25 @@ class ProviderFactory:
         provider_id: str,
         **kwargs: Any,
     ) -> BaseProvider:
+        provider_id = provider_id.strip().lower()
 
-        metadata = self.registry.providers.get(
+        metadata = self.registry.providers.get_metadata(
             provider_id
         )
 
-        if metadata is None:
+        if not metadata:
             raise ValueError(
                 f"Provider '{provider_id}' is not registered."
             )
 
-        if not metadata.models:
+        if not self.builder.exists(provider_id):
             raise ValueError(
-                f"Provider '{provider_id}' has no registered models."
+                f"No provider implementation registered "
+                f"for '{provider_id}'."
             )
 
         return self.builder.build(
-            metadata,
-            **kwargs,
-        )
-
-    def create_from_metadata(
-        self,
-        metadata: ProviderMetadata,
-        **kwargs: Any,
-    ) -> BaseProvider:
-
-        return self.builder.build(
-            metadata,
+            provider_id,
             **kwargs,
         )
 
@@ -71,8 +58,14 @@ class ProviderFactory:
         self,
         provider_id: str,
     ) -> bool:
+        provider_id = provider_id.strip().lower()
 
-        return self.builder.exists(
-            provider_id
+        return (
+            self.registry.providers.exists(provider_id)
+            and self.builder.exists(provider_id)
         )
-'@ | Set-Content ".\ai\providers\provider_factory\factory.py" -Encoding UTF8
+
+
+__all__ = [
+    "ProviderFactory",
+]

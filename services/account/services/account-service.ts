@@ -1,336 +1,119 @@
-
-import { randomUUID } from "node:crypto";
-
-export interface AccountRecord {
-  id: string;
-  userId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  [key: string]: unknown;
-}
-
-export interface CreateAccountInput {
-  userId: string;
-  [key: string]: unknown;
-}
-
-export interface UpdateAccountInput {
-  [key: string]: unknown;
-}
-
-export interface ServiceError {
-  code: string;
-  message: string;
-}
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: ServiceError;
-}
-
-export interface AccountHealth {
-  status: "healthy";
-  totalAccounts: number;
-}
-
-function cloneAccount(account: AccountRecord): AccountRecord {
-  return {
-    ...structuredClone(account),
-    createdAt: new Date(account.createdAt),
-    updatedAt: new Date(account.updatedAt),
-  };
-}
-
-function failure<T>(
-  code: string,
-  message: string,
-): ServiceResult<T> {
-  return {
-    success: false,
-    error: { code, message },
-  };
-}
-
-function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-
-  return (
-    prototype === Object.prototype ||
-    prototype === null
-  );
-}
+import type {
+  Account,
+  CreateAccountInput,
+  UpdateAccountInput,
+} from "../schemas/account-schema.js";
+import type {
+  AccountRepository,
+} from "../repository/account-repository.js";
+import { AccountEventBus } from "../events/account-events.js";
 
 export class AccountService {
-  private readonly accounts = new Map<string, AccountRecord>();
+  constructor(
+    private readonly repository: AccountRepository,
+    private readonly events: AccountEventBus,
+  ) {}
 
-  /**
-   * Create a new account.
-   */
-  async create(
-    input: CreateAccountInput,
-  ): Promise<ServiceResult<AccountRecord>> {
-    if (!isPlainObject(input)) {
-      return failure(
-        "INVALID_INPUT",
-        "Account input must be a valid object.",
-      );
-    }
+  async create(input: CreateAccountInput): Promise<Account> {
+    this.validateEmail(input.email);
+    this.validateName(input.name);
 
-    if (
-      typeof input.userId !== "string" ||
-      input.userId.trim().length === 0
-    ) {
-      return failure(
-        "INVALID_USER_ID",
-        "A valid userId is required.",
-      );
-    }
-
-    const userId = input.userId.trim();
-
-    const existing = [...this.accounts.values()].find(
-      (account) => account.userId === userId,
-    );
+    const existing = await this.repository.findByEmail(input.email);
 
     if (existing) {
-      return failure(
-        "ACCOUNT_ALREADY_EXISTS",
-        "An account already exists for this user.",
-      );
+      throw new Error("An account with this email already exists");
     }
 
-    const now = new Date();
+    const account = await this.repository.create(input);
 
-    const account: AccountRecord = {
-      ...structuredClone(input),
-      id: randomUUID(),
-      userId,
-      createdAt: now,
-      updatedAt: now,
-    };
+    this.events.publish("account.created", account);
 
-    this.accounts.set(account.id, account);
-
-    return {
-      success: true,
-      data: cloneAccount(account),
-    };
+    return account;
   }
 
-  /**
-   * Retrieve an account by its ID.
-   */
-  async getById(
-    id: string,
-  ): Promise<ServiceResult<AccountRecord>> {
-    if (!id?.trim()) {
-      return failure(
-        "INVALID_ID",
-        "A valid account ID is required.",
-      );
-    }
-
-    const account = this.accounts.get(id.trim());
+  async getById(id: string): Promise<Account> {
+    const account = await this.repository.findById(id);
 
     if (!account) {
-      return failure(
-        "ACCOUNT_NOT_FOUND",
-        "Account was not found.",
-      );
+      throw new Error("Account not found");
     }
 
-    return {
-      success: true,
-      data: cloneAccount(account),
-    };
+    return account;
   }
 
-  /**
-   * Retrieve an account by user ID.
-   */
-  async getByUserId(
-    userId: string,
-  ): Promise<ServiceResult<AccountRecord>> {
-    if (!userId?.trim()) {
-      return failure(
-        "INVALID_USER_ID",
-        "A valid userId is required.",
-      );
-    }
-
-    const account = [...this.accounts.values()].find(
-      (item) => item.userId === userId.trim(),
-    );
+  async getByEmail(email: string): Promise<Account> {
+    const account = await this.repository.findByEmail(email);
 
     if (!account) {
-      return failure(
-        "ACCOUNT_NOT_FOUND",
-        "No account exists for this user.",
-      );
+      throw new Error("Account not found");
     }
 
-    return {
-      success: true,
-      data: cloneAccount(account),
-    };
+    return account;
   }
 
-  /**
-   * Retrieve all accounts.
-   */
-  async list(): Promise<ServiceResult<AccountRecord[]>> {
-    return {
-      success: true,
-      data: [...this.accounts.values()].map(cloneAccount),
-    };
-  }
-
-  /**
-   * Update an existing account.
-   */
   async update(
     id: string,
     input: UpdateAccountInput,
-  ): Promise<ServiceResult<AccountRecord>> {
-    if (!id?.trim()) {
-      return failure(
-        "INVALID_ID",
-        "A valid account ID is required.",
-      );
+  ): Promise<Account> {
+    if (input.email) {
+      this.validateEmail(input.email);
+
+      const existing = await this.repository.findByEmail(input.email);
+
+      if (existing && existing.id !== id) {
+        throw new Error("An account with this email already exists");
+      }
     }
 
-    if (!isPlainObject(input)) {
-      return failure(
-        "INVALID_INPUT",
-        "Update input must be a valid object.",
-      );
+    if (input.name !== undefined) {
+      this.validateName(input.name);
     }
 
-    const accountId = id.trim();
-    const existing = this.accounts.get(accountId);
+    const account = await this.repository.update(id, input);
 
-    if (!existing) {
-      return failure(
-        "ACCOUNT_NOT_FOUND",
-        "Account was not found.",
-      );
+    if (!account) {
+      throw new Error("Account not found");
     }
 
-    // Prevent modification of immutable system fields.
-    const {
-      id: ignoredId,
-      userId: ignoredUserId,
-      createdAt: ignoredCreatedAt,
-      updatedAt: ignoredUpdatedAt,
-      ...safeUpdates
-    } = input;
+    this.events.publish("account.updated", account);
 
-    void ignoredId;
-    void ignoredUserId;
-    void ignoredCreatedAt;
-    void ignoredUpdatedAt;
-
-    const updated: AccountRecord = {
-      ...existing,
-      ...structuredClone(safeUpdates),
-      id: existing.id,
-      userId: existing.userId,
-      createdAt: existing.createdAt,
-      updatedAt: new Date(),
-    };
-
-    this.accounts.set(accountId, updated);
-
-    return {
-      success: true,
-      data: cloneAccount(updated),
-    };
+    return account;
   }
 
-  /**
-   * Delete an account.
-   */
-  async delete(
-    id: string,
-  ): Promise<ServiceResult<boolean>> {
-    if (!id?.trim()) {
-      return failure(
-        "INVALID_ID",
-        "A valid account ID is required.",
-      );
+  async delete(id: string): Promise<void> {
+    const account = await this.repository.findById(id);
+
+    if (!account) {
+      throw new Error("Account not found");
     }
 
-    const accountId = id.trim();
+    const deleted = await this.repository.delete(id);
 
-    if (!this.accounts.has(accountId)) {
-      return failure(
-        "ACCOUNT_NOT_FOUND",
-        "Account was not found.",
-      );
+    if (!deleted) {
+      throw new Error("Unable to delete account");
     }
 
-    this.accounts.delete(accountId);
-
-    return {
-      success: true,
-      data: true,
-    };
+    this.events.publish("account.deleted", {
+      id: account.id,
+      email: account.email,
+    });
   }
 
-  /**
-   * Check whether an account exists.
-   */
-  async exists(id: string): Promise<boolean> {
-    if (!id?.trim()) {
-      return false;
+  async list(): Promise<Account[]> {
+    return this.repository.list();
+  }
+
+  private validateEmail(email: string): void {
+    const normalized = email.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      throw new Error("Invalid email address");
     }
-
-    return this.accounts.has(id.trim());
   }
 
-  /**
-   * Return the total number of accounts.
-   */
-  async count(): Promise<number> {
-    return this.accounts.size;
-  }
-
-  /**
-   * Remove all accounts.
-   * Intended for testing or controlled maintenance.
-   */
-  async clear(): Promise<void> {
-    this.accounts.clear();
-  }
-
-  /**
-   * Service health check.
-   */
-  async healthCheck(): Promise<
-    ServiceResult<AccountHealth>
-  > {
-    return {
-      success: true,
-      data: {
-        status: "healthy",
-        totalAccounts: this.accounts.size,
-      },
-    };
+  private validateName(name: string): void {
+    if (!name.trim()) {
+      throw new Error("Name is required");
+    }
   }
 }
-
-/**
- * Shared account service instance.
- */
-export const accountService = new AccountService();

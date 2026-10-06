@@ -1,7 +1,4 @@
-cd "C:\Users\pamar\Downloads\model-main\model-main"
-
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import time
 from dataclasses import dataclass
@@ -47,10 +44,6 @@ class RegistryCache:
 
         self._hits = 0
         self._misses = 0
-
-    # ------------------------------------------------------------------
-    # Core operations
-    # ------------------------------------------------------------------
 
     def set(
         self,
@@ -142,10 +135,6 @@ class RegistryCache:
         with self._lock:
             self._entries.clear()
 
-    # ------------------------------------------------------------------
-    # Expiration
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _expired(
         entry: CacheEntry,
@@ -179,10 +168,6 @@ class RegistryCache:
 
         return removed
 
-    # ------------------------------------------------------------------
-    # Eviction
-    # ------------------------------------------------------------------
-
     def _evict_one(self) -> None:
         """
         Simple deterministic eviction strategy.
@@ -196,10 +181,6 @@ class RegistryCache:
 
         key = next(iter(self._entries))
         del self._entries[key]
-
-    # ------------------------------------------------------------------
-    # Diagnostics
-    # ------------------------------------------------------------------
 
     @property
     def size(self) -> int:
@@ -234,4 +215,3 @@ class RegistryCache:
             "misses": self.misses,
             "hit_rate": self.hit_rate,
         }
-'@ | Set-Content ".\ai\providers\registry\cache.py" -Encoding UTF8

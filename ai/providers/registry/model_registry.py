@@ -1,12 +1,10 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from threading import RLock
 from typing import Dict, Iterable, List, Optional
 
 from ..constants import (
     ModelCapability,
-    ProviderStatus,
     ProviderTier,
 )
 from ..models import ModelMetadata
@@ -36,7 +34,6 @@ class ModelRegistry:
     - Query models by tier.
     - Query models by capability.
     - Filter disabled models.
-    - Filter models belonging to unavailable providers.
     - Support deterministic model selection upstream.
     - Provide thread-safe registry operations.
 
@@ -62,10 +59,6 @@ class ModelRegistry:
         self._models: Dict[str, ModelMetadata] = {}
         self._lock = RLock()
 
-    # ------------------------------------------------------------------
-    # Registration
-    # ------------------------------------------------------------------
-
     def register(
         self,
         model: ModelMetadata,
@@ -74,19 +67,6 @@ class ModelRegistry:
     ) -> ModelMetadata:
         """
         Register a model.
-
-        Parameters
-        ----------
-        model:
-            Model metadata.
-
-        overwrite:
-            If False, duplicate registration raises an error.
-            If True, existing metadata is replaced.
-
-        Returns
-        -------
-        ModelMetadata
         """
 
         if not model.model_id:
@@ -128,10 +108,6 @@ class ModelRegistry:
 
         return count
 
-    # ------------------------------------------------------------------
-    # Lookup
-    # ------------------------------------------------------------------
-
     def get(
         self,
         model_id: str,
@@ -166,10 +142,6 @@ class ModelRegistry:
     ) -> bool:
         with self._lock:
             return model_id in self._models
-
-    # ------------------------------------------------------------------
-    # Query
-    # ------------------------------------------------------------------
 
     def all(
         self,
@@ -303,10 +275,6 @@ class ModelRegistry:
 
         return result
 
-    # ------------------------------------------------------------------
-    # State management
-    # ------------------------------------------------------------------
-
     def enable(
         self,
         model_id: str,
@@ -336,10 +304,6 @@ class ModelRegistry:
     def clear(self) -> None:
         with self._lock:
             self._models.clear()
-
-    # ------------------------------------------------------------------
-    # Statistics
-    # ------------------------------------------------------------------
 
     def count(
         self,
@@ -379,18 +343,10 @@ class ModelRegistry:
                 key=lambda value: value.value,
             )
 
-    # ------------------------------------------------------------------
-    # Snapshot
-    # ------------------------------------------------------------------
-
     def snapshot(self) -> Dict[str, ModelMetadata]:
         """
         Return a shallow snapshot of the registry.
-
-        The returned dictionary can be inspected without
-        holding the registry lock.
         """
 
         with self._lock:
             return dict(self._models)
-'@ | Set-Content ".\ai\providers\registry\model_registry.py" -Encoding UTF8
