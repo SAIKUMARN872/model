@@ -1,19 +1,26 @@
-export type WorkflowStatus =
+﻿export type WorkflowStatus =
   | "draft"
   | "active"
+  | "paused"
+  | "completed"
+  | "failed"
   | "archived";
 
-export interface WorkflowRecord {
+export interface WorkflowStep {
+  id: string;
+  name: string;
+  type: string;
+  config: Record<string, unknown>;
+}
+
+export interface Workflow {
   id: string;
   tenantId: string;
   name: string;
   description?: string;
-  nodes: string[];
+  steps: WorkflowStep[];
   status: WorkflowStatus;
-  version: number;
   metadata: Record<string, unknown>;
-  publishedAt?: string;
-  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,20 +29,14 @@ export interface CreateWorkflowInput {
   tenantId: string;
   name: string;
   description?: string;
-  nodes?: string[];
+  steps?: WorkflowStep[];
   metadata?: Record<string, unknown>;
 }
 
 export interface UpdateWorkflowInput {
   name?: string;
   description?: string;
-  nodes?: string[];
+  steps?: WorkflowStep[];
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowFilters {
-  tenantId: string;
-  status?: WorkflowStatus;
-  limit?: number;
-  offset?: number;
-}
