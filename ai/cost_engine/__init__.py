@@ -11,4 +11,6 @@ from .utils import *
 
 __all__ = [
     "CostEngine",
+    "ModelPricingProvider",
+    "ModelRegistryPricingProvider",
 ]

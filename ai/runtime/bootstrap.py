@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from ai.inference_engine.backends.transformers.engine import TransformersBackend
+from ai.providers.bootstrap import CanonicalProviderBootstrap
 from ai.providers.slm.qwen import QwenProvider
-from ai.model_registry.utils import model_info_to_record
 from ai.routing_engine.inference_adapter import RoutingInferenceAdapter
 
 from .container import ModelNowContainer
@@ -20,6 +20,9 @@ class ModelNowRuntime:
         self.container = container
         self.provider = provider
         self.backend = backend
+        self.canonical_bootstrap = CanonicalProviderBootstrap(
+            self.model_registry
+        )
 
     @property
     def adapter(self) -> RoutingInferenceAdapter:
@@ -39,7 +42,8 @@ class ModelNowRuntime:
 
     async def initialize(self) -> None:
         await self.provider.initialize()
-        await self._register_provider_models()
+
+        await self.canonical_bootstrap.load()
 
         if self.container.inference_engine.get_backend(
             self.backend.backend_type.value
@@ -50,25 +54,11 @@ class ModelNowRuntime:
 
         await self.container.inference_engine.initialize()
 
-    async def _register_provider_models(self) -> None:
-        model_infos = await self.provider.list_models()
-
-        records = [
-            model_info_to_record(model)
-            for model in model_infos
-        ]
-
-        for record in records:
-            existing = self.model_registry.get(
-                record.provider,
-                record.model_id,
-            )
-
-            if existing is None:
-                self.model_registry.register(record)
-
     async def close(self) -> None:
-        await self.container.inference_engine.close()
+        try:
+            await self.container.inference_engine.close()
+        finally:
+            self.container.close()
 
 
 def create_runtime() -> ModelNowRuntime:
@@ -93,3 +83,4 @@ __all__ = [
     "ModelNowRuntime",
     "create_runtime",
 ]
+

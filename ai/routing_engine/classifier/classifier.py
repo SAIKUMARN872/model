@@ -55,9 +55,14 @@ class RequestClassifier:
         )
 
         metadata = {
-            "classifier_version": "v1",
+            "classifier_version": "v1.1",
             "text_length": features.text_length,
             "estimated_input_tokens": features.estimated_tokens,
+            "debugging_detected": features.has_debugging_keywords,
+            "distributed_system_detected": (
+                features.has_distributed_system_keywords
+            ),
+            "architecture_detected": features.has_architecture_keywords,
         }
 
         return TaskProfile(
@@ -152,6 +157,15 @@ class RequestClassifier:
         if features.estimated_tokens > 1000:
             return TaskComplexity.MEDIUM
 
+        if features.has_architecture_keywords:
+            return TaskComplexity.HIGH
+
+        if (
+            features.has_debugging_keywords
+            and features.has_distributed_system_keywords
+        ):
+            return TaskComplexity.HIGH
+
         keyword_count = sum(
             [
                 features.has_code_keywords,
@@ -176,6 +190,15 @@ class RequestClassifier:
         complexity: TaskComplexity,
     ) -> ReasoningLevel:
         if features.has_reasoning_keywords:
+            return ReasoningLevel.HIGH
+
+        if (
+            features.has_debugging_keywords
+            and features.has_distributed_system_keywords
+        ):
+            return ReasoningLevel.HIGH
+
+        if features.has_architecture_keywords:
             return ReasoningLevel.HIGH
 
         if features.has_analysis_keywords:
@@ -227,6 +250,9 @@ class RequestClassifier:
                 features.has_analysis_keywords,
                 features.has_tool_keywords,
                 features.has_agentic_keywords,
+                features.has_debugging_keywords,
+                features.has_distributed_system_keywords,
+                features.has_architecture_keywords,
             ]
         )
 

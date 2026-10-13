@@ -1,170 +1,206 @@
-@'
-from ai.providers.base.provider import BaseProvider
-from ai.providers.base.config import ProviderConfig
-from ai.providers.base.models import (
-    ModelInfo,
+from __future__ import annotations
+
+import time
+from collections.abc import AsyncIterator
+
+from ...base.models import (
     ModelCapability,
+    ModelInfo,
     ProviderHealth,
     ProviderMetadata,
     ProviderStatus,
+    ProviderTier,
 )
-from ai.providers.base.request import ChatRequest
-from ai.providers.base.response import ChatResponse
+from ...base.provider import BaseProvider
+from ...base.request import ChatRequest
+from ...base.response import ChatResponse, StreamChunk
 
 from .chat import DeepSeekChat
 from .client import DeepSeekClient
+from .config import DeepSeekConfig
 from .models import DEEPSEEK_MODELS
 from .stream import DeepSeekStream
-from .tokenizer import DeepSeekTokenizer
 
 
 class DeepSeekProvider(BaseProvider):
+    """ModelNow provider adapter for DeepSeek."""
 
-    def __init__(self, config: ProviderConfig | None = None):
-        config = config or ProviderConfig(
-            provider_id="deepseek",
-            enabled=True,
+    name = "deepseek"
+    version = "1.0"
+
+    def __init__(
+        self,
+        config: DeepSeekConfig | None = None,
+    ) -> None:
+        deepseek_config = config or DeepSeekConfig.from_env()
+
+        super().__init__(
+            _to_base_config(deepseek_config)
         )
 
-        super().__init__(config)
+        self.deepseek_config = deepseek_config
+        self.client = DeepSeekClient(
+            deepseek_config
+        )
+        self.chat_adapter = DeepSeekChat(
+            self.client
+        )
+        self.stream_adapter = DeepSeekStream(
+            self.client
+        )
 
-        self.provider_id = config.provider_id
-        self.client = DeepSeekClient(config)
-        self.chat_adapter = DeepSeekChat(self.client)
-        self.stream_adapter = DeepSeekStream(self.client)
-        self.tokenizer = DeepSeekTokenizer()
+    @property
+    def metadata(self) -> ProviderMetadata:
+        return ProviderMetadata(
+            provider_id="deepseek",
+            display_name="DeepSeek",
+            version=self.version,
+            tier_support=frozenset(
+                {ProviderTier.LLM}
+            ),
+            capabilities=frozenset(
+                {
+                    ModelCapability.CHAT,
+                    ModelCapability.REASONING,
+                    ModelCapability.CODE,
+                    ModelCapability.STREAMING,
+                    ModelCapability.TOOL_USE,
+                    ModelCapability.STRUCTURED_OUTPUT,
+                }
+            ),
+            enterprise_ready=True,
+            streaming_supported=True,
+            tool_use_supported=True,
+        )
 
     async def initialize(self) -> None:
+        self.ensure_enabled()
         self._initialized = True
 
-        if self.client.deepseek_config.api_key:
-            self._status = ProviderStatus.READY
-        else:
-            self._status = ProviderStatus.UNAVAILABLE
-
     async def close(self) -> None:
-        await self.client.close()
-
         self._initialized = False
-        self._status = ProviderStatus.CLOSED
 
     async def health_check(self) -> ProviderHealth:
-
-        if not self._initialized:
+        if not self.deepseek_config.enabled:
             return ProviderHealth(
                 healthy=False,
                 provider="deepseek",
-                status=ProviderStatus.CLOSED,
-                message="DeepSeek provider is not initialized.",
+                status=ProviderStatus.DISABLED,
+                message="DeepSeek provider is disabled.",
+                checked_at=time.time(),
             )
 
-        if not self.client.deepseek_config.api_key:
+        if not self.deepseek_config.api_key:
             return ProviderHealth(
                 healthy=False,
                 provider="deepseek",
                 status=ProviderStatus.UNAVAILABLE,
-                message="DeepSeek API key is not configured.",
+                message="DEEPSEEK_API_KEY is not configured.",
+                checked_at=time.time(),
             )
 
         return ProviderHealth(
             healthy=True,
             provider="deepseek",
             status=ProviderStatus.READY,
-            message="DeepSeek API key is configured.",
+            message="DeepSeek configuration is available.",
+            checked_at=time.time(),
         )
 
     async def list_models(self) -> list[ModelInfo]:
+        models: list[ModelInfo] = []
 
-        return [
-            ModelInfo(
-                id=model.id,
-                provider="deepseek",
-                tier=model.tier,
-                capabilities={
-                    ModelCapability.CHAT,
-                    ModelCapability.REASONING,
-                    ModelCapability.CODE,
-                    ModelCapability.TOOL_USE,
-                    ModelCapability.STRUCTURED_OUTPUT,
-                    ModelCapability.JSON,
-                    ModelCapability.STREAMING,
-                    ModelCapability.LONG_CONTEXT,
-                    ModelCapability.AGENTIC,
-                },
-                context_window=model.context_window,
-                max_output_tokens=model.max_output_tokens,
-                input_cost_per_1m_tokens=model.input_cost_per_1m,
-                output_cost_per_1m_tokens=model.output_cost_per_1m,
-                quality_score=model.quality_score,
-                enabled=True,
+        for model in DEEPSEEK_MODELS.values():
+            capabilities = {
+                ModelCapability.CHAT,
+                ModelCapability.STREAMING,
+            }
+
+            if model.supports_tools:
+                capabilities.add(
+                    ModelCapability.TOOL_USE
+                )
+
+            if model.supports_reasoning:
+                capabilities.add(
+                    ModelCapability.REASONING
+                )
+
+            if model.supports_structured_output:
+                capabilities.add(
+                    ModelCapability.STRUCTURED_OUTPUT
+                )
+
+            models.append(
+                ModelInfo(
+                    id=model.model_id,
+                    provider="deepseek",
+                    aliases=(
+                        model.display_name,
+                    ),
+                    tier=ProviderTier.LLM,
+                    capabilities=frozenset(
+                        capabilities
+                    ),
+                    context_window=model.context_window,
+                    max_output_tokens=model.max_output_tokens,
+                    estimated_latency_ms=None,
+                    quality_score=None,
+                    enabled=True,
+                    metadata={
+                        "display_name": model.display_name,
+                        "supports_streaming": (
+                            model.supports_streaming
+                        ),
+                        "supports_tools": (
+                            model.supports_tools
+                        ),
+                        "supports_reasoning": (
+                            model.supports_reasoning
+                        ),
+                        "supports_vision": (
+                            model.supports_vision
+                        ),
+                    },
+                )
             )
-            for model in DEEPSEEK_MODELS
-        ]
+
+        return models
 
     async def chat(
         self,
         request: ChatRequest,
     ) -> ChatResponse:
-
         self.ensure_initialized()
-        self.ensure_enabled()
+        return await self.chat_adapter.create(
+            request
+        )
 
-        if not self.supports_model_local(request.model):
-            raise ValueError(
-                f"Unsupported DeepSeek model: {request.model}"
-            )
-
-        return await self.chat_adapter.generate(request)
-
-    async def stream(self, request: ChatRequest):
-
+    async def stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncIterator[StreamChunk]:
         self.ensure_initialized()
-        self.ensure_enabled()
 
-        if not self.supports_model_local(request.model):
-            raise ValueError(
-                f"Unsupported DeepSeek model: {request.model}"
-            )
-
-        async for chunk in self.stream_adapter.generate(request):
+        async for chunk in self.stream_adapter.stream(
+            request
+        ):
             yield chunk
 
-    def supports_model_local(
-        self,
-        model_id: str,
-    ) -> bool:
 
-        return any(
-            model.id == model_id
-            for model in DEEPSEEK_MODELS
-        )
+def _to_base_config(
+    config: DeepSeekConfig,
+):
+    from ...base.config import ProviderConfig
 
-    async def supports_model(
-        self,
-        model_id: str,
-    ) -> bool:
+    return ProviderConfig(
+        provider_id=config.provider_id,
+        api_key=config.api_key,
+        base_url=config.base_url,
+        timeout_seconds=config.timeout_seconds,
+        max_retries=config.max_retries,
+        enabled=config.enabled,
+    )
 
-        return self.supports_model_local(model_id)
 
-    def metadata(self) -> ProviderMetadata:
-
-        return ProviderMetadata(
-            provider_id="deepseek",
-            display_name="DeepSeek",
-            version="OpenAI-compatible",
-            capabilities={
-                ModelCapability.CHAT,
-                ModelCapability.REASONING,
-                ModelCapability.CODE,
-                ModelCapability.TOOL_USE,
-                ModelCapability.STRUCTURED_OUTPUT,
-                ModelCapability.JSON,
-                ModelCapability.STREAMING,
-                ModelCapability.LONG_CONTEXT,
-                ModelCapability.AGENTIC,
-            },
-            enterprise_ready=True,
-            streaming_supported=True,
-            tool_use_supported=True,
-        )
-'@ | Set-Content ".\ai\providers\llm\deepseek\provider.py" -Encoding UTF8
+__all__ = ["DeepSeekProvider"]

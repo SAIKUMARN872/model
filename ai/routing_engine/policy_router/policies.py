@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -29,6 +29,10 @@ class PolicyDecision:
     max_cost: float | None = None
     max_latency_ms: float | None = None
     streaming_required: bool = False
+
+    quality_weight: float = 0.50
+    cost_weight: float = 0.25
+    latency_weight: float = 0.25
 
     policies_applied: tuple[str, ...] = ()
     reasons: tuple[str, ...] = ()

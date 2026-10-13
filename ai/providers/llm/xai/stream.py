@@ -1,75 +1,107 @@
-@'
+from __future__ import annotations
+
 import json
-from typing import Iterator
+from typing import Any, AsyncIterator
 
-from ai.providers.base.request import ProviderRequest
-
-from .client import XAIClient
-from .utils import build_response_payload
+from ai.providers.base.response import StreamChunk
 
 
-class XAIStream:
-    def __init__(self, client: XAIClient):
-        self.client = client
-
-    def generate(
+class XAIStreamParser:
+    def __init__(
         self,
-        request: ProviderRequest,
-    ) -> Iterator[str]:
+        provider: str = "xai",
+        model: str | None = None,
+        request_id: str | None = None,
+    ):
+        self.provider = provider
+        self.model = model
+        self.request_id = request_id
 
-        payload = build_response_payload(
-            model=request.model,
-            messages=request.messages,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            stream=True,
-            tools=request.tools,
-            metadata=request.metadata,
-        )
+    def parse_line(
+        self,
+        line: str,
+    ) -> StreamChunk | None:
+        line = line.strip()
 
-        raw_stream = self.client.stream_responses(
-            payload
-        )
+        if not line:
+            return None
 
-        for block in raw_stream.split("\n\n"):
-            event_name = None
-            data_lines = []
+        if line.startswith(":"):
+            return None
 
-            for line in block.splitlines():
-                if line.startswith("event:"):
-                    event_name = line[
-                        len("event:"):
-                    ].strip()
+        if line.startswith("data:"):
+            line = line[5:].strip()
 
-                elif line.startswith("data:"):
-                    data_lines.append(
-                        line[len("data:"):].strip()
-                    )
-
-            if not data_lines:
-                continue
-
-            raw_data = "\n".join(data_lines)
-
-            if raw_data == "[DONE]":
-                break
-
-            try:
-                event = json.loads(raw_data)
-            except json.JSONDecodeError:
-                continue
-
-            event_type = (
-                event.get("type")
-                or event_name
+        if line == "[DONE]":
+            return StreamChunk(
+                provider=self.provider,
+                model=self.model,
+                request_id=self.request_id,
+                done=True,
+                finish_reason="stop",
             )
 
-            if event_type in {
-                "response.output_text.delta",
-                "response.text.delta",
-            }:
-                delta = event.get("delta", "")
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            return None
 
-                if isinstance(delta, str) and delta:
-                    yield delta
-'@ | Set-Content .\ai\providers\llm\xai\stream.py
+        return self.parse_event(data)
+
+    def parse_event(
+        self,
+        data: dict[str, Any],
+    ) -> StreamChunk:
+        choices = data.get("choices") or []
+
+        content = ""
+        finish_reason = None
+        tool_calls = []
+
+        if choices:
+            choice = choices[0]
+            finish_reason = choice.get("finish_reason")
+
+            delta = choice.get("delta") or {}
+
+            value = delta.get("content")
+
+            if isinstance(value, str):
+                content = value
+
+            elif isinstance(value, list):
+                parts = []
+
+                for part in value:
+                    if isinstance(part, dict):
+                        text = part.get("text")
+                        if isinstance(text, str):
+                            parts.append(text)
+
+                content = "".join(parts)
+
+            tool_calls = delta.get("tool_calls") or []
+
+        usage = data.get("usage")
+
+        return StreamChunk(
+            content=content,
+            provider=self.provider,
+            model=data.get("model") or self.model,
+            request_id=data.get("id") or self.request_id,
+            finish_reason=finish_reason,
+            usage=usage,
+            tool_calls=tool_calls,
+            metadata=data,
+            done=finish_reason is not None,
+        )
+
+    async def parse(
+        self,
+        lines: AsyncIterator[str],
+    ):
+        async for line in lines:
+            chunk = self.parse_line(line)
+
+            if chunk is not None:
+                yield chunk

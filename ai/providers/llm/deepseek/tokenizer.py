@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Iterable
 
@@ -112,4 +111,3 @@ class DeepSeekTokenizer:
             )
 
         return total
-'@ | Set-Content ".\ai\providers\llm\deepseek\tokenizer.py" -Encoding UTF8

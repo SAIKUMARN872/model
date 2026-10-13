@@ -5,11 +5,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from providers.base.config import ProviderConfig
-from providers.base.request import ChatMessage, ChatRequest
-from providers.base.response import ChatResponse, ChatUsage
-from providers.llm.openai.config import OpenAIConfig
-from providers.llm.openai.provider import OpenAIProvider
+from ai.providers.base.config import ProviderConfig
+from ai.providers.base.request import ChatMessage, ChatRequest
+from ai.providers.base.response import ChatResponse, ChatUsage
+from ai.providers.llm.openai.config import OpenAIConfig
+from ai.providers.llm.openai.provider import OpenAIProvider
 
 
 class TestOpenAIMockChat(unittest.TestCase):
@@ -118,3 +118,4 @@ class TestOpenAIMockChat(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

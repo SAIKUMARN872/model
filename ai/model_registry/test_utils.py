@@ -1,18 +1,18 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from providers.base.models import (
+from ai.providers.base.models import (
     ModelCapability,
     ModelInfo,
     ProviderTier,
 )
 
-from model_registry.models import (
+from ai.model_registry.models import (
     ModelTier,
 )
 
-from model_registry.utils import (
+from ai.model_registry.utils import (
     model_info_to_record,
     normalize_features,
     normalize_tier,
@@ -170,3 +170,4 @@ class ModelRegistryUtilsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

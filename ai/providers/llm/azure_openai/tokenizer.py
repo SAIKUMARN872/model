@@ -1,55 +1,51 @@
-cd "C:\Users\pamar\Downloads\model-main\model-main"
+﻿from __future__ import annotations
 
-@'
-from __future__ import annotations
+from typing import Iterable
 
-from ai.providers.base import (
-    ApproximateTokenizer,
-    BaseTokenizer,
-    estimate_tokens,
-)
+from ai.providers.base.request import ChatMessage
 
 
-class AzureOpenAITokenizer(ApproximateTokenizer):
-    """
-    ModelNow tokenizer adapter for Azure OpenAI.
+class AzureTokenizer:
+    """Lightweight token estimator with optional tiktoken support."""
 
-    This uses ModelNow's approximate tokenizer foundation.
-    A model-specific tokenizer can be plugged in later when
-    exact token accounting is required.
-    """
-
-    provider = "azure_openai"
-
-    def __init__(
-        self,
-        *,
-        model: str | None = None,
-        chars_per_token: float = 4.0,
-    ) -> None:
-        super().__init__(
-            chars_per_token=chars_per_token,
-        )
-
+    def __init__(self, model: str | None = None) -> None:
         self.model = model
+        self._encoder = None
 
-    def count_tokens(self, text: str) -> int:
-        return super().count_tokens(text)
+        try:
+            import tiktoken
 
+            try:
+                self._encoder = tiktoken.encoding_for_model(model or "gpt-4")
+            except Exception:
+                self._encoder = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            self._encoder = None
 
-def estimate_azure_tokens(
-    text: str,
-    *,
-    model: str | None = None,
-) -> int:
-    tokenizer = AzureOpenAITokenizer(model=model)
-    return tokenizer.count_tokens(text)
+    def count_text(self, text: str) -> int:
+        if not text:
+            return 0
 
+        if self._encoder is not None:
+            try:
+                return len(self._encoder.encode(text))
+            except Exception:
+                pass
 
-__all__ = [
-    "AzureOpenAITokenizer",
-    "BaseTokenizer",
-    "estimate_azure_tokens",
-    "estimate_tokens",
-]
-'@ | Set-Content ".\ai\providers\llm\azure_openai\tokenizer.py" -Encoding UTF8
+        return max(1, len(text) // 4)
+
+    def count_messages(self, messages: Iterable[ChatMessage]) -> int:
+        total = 0
+
+        for message in messages:
+            total += 4
+            total += self.count_text(message.role)
+            total += self.count_text(message.content)
+
+            if message.name:
+                total += self.count_text(message.name)
+
+        return total + 2
+
+    def estimate_completion(self, text: str) -> int:
+        return self.count_text(text)

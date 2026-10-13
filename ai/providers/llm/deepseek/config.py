@@ -1,27 +1,71 @@
+from __future__ import annotations
 
-
-@'
 from dataclasses import dataclass
 import os
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeepSeekConfig:
+    provider_id: str = "deepseek"
     api_key: str | None = None
     base_url: str = "https://api.deepseek.com"
-    timeout: float = 60.0
-    max_retries: int = 2
+    timeout_seconds: float = 120.0
+    max_retries: int = 3
+    client_name: str = "modelnow"
+    enabled: bool = True
 
-    def __post_init__(self):
-        if self.api_key is None:
-            self.api_key = os.getenv("DEEPSEEK_API_KEY")
+    @classmethod
+    def from_env(cls) -> "DeepSeekConfig":
+        return cls(
+            provider_id="deepseek",
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            base_url=os.getenv(
+                "DEEPSEEK_BASE_URL",
+                "https://api.deepseek.com",
+            ).rstrip("/"),
+            timeout_seconds=float(
+                os.getenv(
+                    "DEEPSEEK_TIMEOUT_SECONDS",
+                    "120",
+                )
+            ),
+            max_retries=int(
+                os.getenv(
+                    "DEEPSEEK_MAX_RETRIES",
+                    "3",
+                )
+            ),
+            client_name=os.getenv(
+                "DEEPSEEK_CLIENT_NAME",
+                "modelnow",
+            ),
+            enabled=os.getenv(
+                "DEEPSEEK_ENABLED",
+                "true",
+            ).lower()
+            in {"1", "true", "yes", "on"},
+        )
 
     @property
+    def configured(self) -> bool:
+        return bool(
+            self.api_key
+            and self.base_url
+        )
+
     def client_kwargs(self) -> dict:
-        return {
-            "api_key": self.api_key or "",
-            "base_url": self.base_url,
-            "timeout": self.timeout,
+        result = {
+            "timeout": self.timeout_seconds,
             "max_retries": self.max_retries,
         }
-'@ | Set-Content ".\ai\providers\llm\deepseek\config.py" -Encoding UTF8
+
+        if self.api_key:
+            result["api_key"] = self.api_key
+
+        if self.base_url:
+            result["base_url"] = self.base_url
+
+        return result
+
+
+__all__ = ["DeepSeekConfig"]

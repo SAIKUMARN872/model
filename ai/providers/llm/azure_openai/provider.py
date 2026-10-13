@@ -1,25 +1,22 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from collections.abc import Sequence
-
-from ai.providers.base import (
-    BaseProvider,
-    ChatRequest,
-    ChatResponse,
-    ModelCapability,
+from ai.providers.base.config import ProviderConfig
+from ai.providers.base.models import (
     ModelInfo,
-    ProviderConfig,
     ProviderHealth,
     ProviderMetadata,
     ProviderStatus,
     ProviderTier,
 )
+from ai.providers.base.provider import BaseProvider
+from ai.providers.base.request import ChatRequest
+from ai.providers.base.response import ChatResponse, StreamChunk
 
-from .chat import build_chat_payload, parse_chat_response
+from .chat import AzureOpenAIChat
 from .client import AzureOpenAIClient
 from .config import AzureOpenAIConfig
-from .models import AzureDeployment
+from .models import DEFAULT_AZURE_DEPLOYMENTS, AzureDeployment
+from .stream import AzureOpenAIStreamParser
 
 
 class AzureOpenAIProvider(BaseProvider):
@@ -28,95 +25,113 @@ class AzureOpenAIProvider(BaseProvider):
 
     def __init__(
         self,
-        config: ProviderConfig,
-        azure_config: AzureOpenAIConfig | None = None,
-        deployments: Sequence[AzureDeployment] | None = None,
+        config: ProviderConfig | AzureOpenAIConfig | None = None,
+        deployments: tuple[AzureDeployment, ...] = DEFAULT_AZURE_DEPLOYMENTS,
     ) -> None:
+        if config is None:
+            azure_config = AzureOpenAIConfig.from_env()
+
+            config = ProviderConfig(
+                provider_id="azure_openai",
+                api_key=azure_config.api_key,
+                base_url=azure_config.endpoint,
+                timeout_seconds=azure_config.timeout_seconds,
+                connect_timeout_seconds=azure_config.connect_timeout_seconds,
+                max_retries=azure_config.max_retries,
+                enabled=azure_config.enabled,
+            )
+        elif isinstance(config, AzureOpenAIConfig):
+            azure_config = config
+
+            config = ProviderConfig(
+                provider_id="azure_openai",
+                api_key=config.api_key,
+                base_url=config.endpoint,
+                timeout_seconds=config.timeout_seconds,
+                connect_timeout_seconds=config.connect_timeout_seconds,
+                max_retries=config.max_retries,
+                enabled=config.enabled,
+            )
+        else:
+            azure_config = AzureOpenAIConfig(
+                endpoint=config.base_url or "",
+                api_key=config.api_key,
+                timeout_seconds=config.timeout_seconds,
+                connect_timeout_seconds=config.connect_timeout_seconds,
+                max_retries=config.max_retries,
+                enabled=config.enabled,
+            )
+
         super().__init__(config)
 
-        self.azure_config = azure_config or AzureOpenAIConfig.from_env()
-
-        self.deployments = tuple(deployments or ())
-
-        self.client = AzureOpenAIClient(
-            config=config,
-            azure_config=self.azure_config,
-        )
-
-        self._status = ProviderStatus.UNKNOWN
+        self.azure_config = azure_config
+        self.deployments = deployments
+        self.client: AzureOpenAIClient | None = None
+        self._chat: AzureOpenAIChat | None = None
 
     @property
     def metadata(self) -> ProviderMetadata:
         return ProviderMetadata(
-            provider_id=self.name,
-            display_name="Azure OpenAI",
+            name=self.name,
             version=self.version,
-            tier_support=frozenset({ProviderTier.LLM}),
-            capabilities=frozenset(
-                {
-                    ModelCapability.CHAT,
-                    ModelCapability.STREAMING,
-                    ModelCapability.TOOL_USE,
-                    ModelCapability.STRUCTURED_OUTPUT,
-                }
+            tier=ProviderTier.LLM,
+            status=(
+                ProviderStatus.READY
+                if self.initialized
+                else ProviderStatus.UNKNOWN
             ),
-            enterprise_ready=True,
-            streaming_supported=True,
-            tool_use_supported=True,
             metadata={
                 "endpoint": self.azure_config.endpoint,
-                "api_version": self.azure_config.api_version,
-                "deployment_count": len(self.deployments),
+                "deployment_count": str(len(self.deployments)),
             },
         )
 
     async def initialize(self) -> None:
-        self.ensure_enabled()
-
-        if self._initialized:
+        if self.initialized:
             return
 
-        self._status = ProviderStatus.INITIALIZING
+        self.ensure_enabled()
 
-        try:
-            await self.client.initialize()
+        self.client = AzureOpenAIClient(self.config)
+        await self.client.initialize()
 
-            self._initialized = True
-            self._status = ProviderStatus.READY
-
-        except Exception:
-            self._initialized = False
-            self._status = ProviderStatus.UNAVAILABLE
-            raise
+        self._chat = AzureOpenAIChat(self.client)
+        self._initialized = True
 
     async def close(self) -> None:
-        await self.client.close()
+        if self.client is not None:
+            await self.client.close()
 
+        self.client = None
+        self._chat = None
         self._initialized = False
-        self._status = ProviderStatus.CLOSED
 
     async def health_check(self) -> ProviderHealth:
-        if not self._initialized:
+        if not self.config.enabled:
             return ProviderHealth(
                 provider=self.name,
+                status=ProviderStatus.DISABLED,
                 healthy=False,
-                status=ProviderStatus.UNKNOWN,
-                message="Azure OpenAI provider is not initialized.",
+                message="Provider is disabled",
             )
 
-        if self._status == ProviderStatus.READY:
+        if not self.azure_config.configured:
             return ProviderHealth(
                 provider=self.name,
-                healthy=True,
-                status=ProviderStatus.READY,
-                message="Azure OpenAI client is initialized.",
+                status=ProviderStatus.UNAVAILABLE,
+                healthy=False,
+                message="Azure OpenAI credentials are not configured",
             )
 
         return ProviderHealth(
             provider=self.name,
-            healthy=False,
-            status=self._status,
-            message=f"Azure OpenAI provider status: {self._status.value}.",
+            status=(
+                ProviderStatus.READY
+                if self.initialized
+                else ProviderStatus.UNKNOWN
+            ),
+            healthy=True,
+            message="Azure OpenAI configuration is available",
         )
 
     async def list_models(self) -> list[ModelInfo]:
@@ -126,41 +141,61 @@ class AzureOpenAIProvider(BaseProvider):
             if deployment.enabled
         ]
 
-    async def chat(self, request: ChatRequest) -> ChatResponse:
-        await self.ensure_initialized_async()
+    async def supports_model(self, model_id: str) -> bool:
+        normalized = model_id.strip().lower()
 
-        payload = build_chat_payload(request)
-
-        raw_response = await self.client.request(
-            method="POST",
-            path="/chat/completions",
-            json=payload,
+        return any(
+            normalized == deployment.deployment_name.lower()
+            or normalized == deployment.model_name.lower()
+            for deployment in self.deployments
+            if deployment.enabled
         )
 
-        return parse_chat_response(raw_response)
-
-    async def supports_model(self, model_id: str) -> bool:
-        if not model_id:
-            return False
-
-        for deployment in self.deployments:
-            if not deployment.enabled:
-                continue
-
-            if deployment.deployment_name == model_id:
-                return True
-
-            if deployment.model_name == model_id:
-                return True
-
-        return False
-
-    async def ensure_initialized_async(self) -> None:
-        self.ensure_enabled()
-
-        if not self._initialized:
+    async def chat(self, request: ChatRequest) -> ChatResponse:
+        if not self.initialized:
             await self.initialize()
 
+        if not await self.supports_model(request.model):
+            raise ValueError(
+                f"Unsupported Azure OpenAI deployment: {request.model}"
+            )
 
-__all__ = ["AzureOpenAIProvider"]
-'@ | Set-Content ".\ai\providers\llm\azure_openai\provider.py"
+        if self._chat is None:
+            raise RuntimeError("Azure OpenAI chat client is unavailable")
+
+        return await self._chat.execute(request)
+
+    async def stream(self, request: ChatRequest):
+        if not self.initialized:
+            await self.initialize()
+
+        if self.client is None:
+            raise RuntimeError(
+                "Azure OpenAI client is unavailable"
+            )
+
+        payload = {
+            "messages": [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                }
+                for message in request.messages
+            ],
+            "stream": True,
+        }
+
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
+
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
+
+        async for chunk in self.client.stream(
+            request.model,
+            payload,
+        ):
+            yield chunk

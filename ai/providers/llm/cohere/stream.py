@@ -1,89 +1,149 @@
-@'
-import json
-from typing import Iterator
+from __future__ import annotations
 
-from ai.providers.base.request import ProviderRequest
+import json
+from collections.abc import AsyncIterator
+from typing import Any
+
+from ...base.request import ChatRequest
+from ...base.response import StreamChunk
 
 from .client import CohereClient
-from .utils import build_chat_payload
+from .utils import (
+    build_chat_payload,
+    extract_stream_finish_reason,
+    extract_stream_text,
+    extract_stream_usage,
+)
 
 
 class CohereStream:
+    """Cohere streaming adapter for ModelNow."""
+
     def __init__(
         self,
         client: CohereClient,
-    ):
+    ) -> None:
         self.client = client
 
-    def generate(
+    async def stream(
         self,
-        request: ProviderRequest,
-    ) -> Iterator[str]:
+        request: ChatRequest,
+    ) -> AsyncIterator[StreamChunk]:
+        payload = build_chat_payload(request)
 
-        payload = build_chat_payload(
-            model=request.model,
-            messages=request.messages,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            stream=True,
-            tools=request.tools,
-            metadata=request.metadata,
-        )
+        payload["stream"] = True
 
         raw_stream = self.client.stream_chat(
             payload
         )
 
-        for block in raw_stream.split(
-            "\n\n"
+        for event in _parse_sse_events(
+            raw_stream
         ):
-            event_type = None
-            data_lines = []
+            event_type = event.get(
+                "type",
+                "",
+            )
 
-            for line in block.splitlines():
-                if line.startswith("event:"):
-                    event_type = line[
-                        len("event:"):
-                    ].strip()
+            text = extract_stream_text(
+                event
+            )
 
-                elif line.startswith("data:"):
-                    data_lines.append(
-                        line[
-                            len("data:"):
-                        ].strip()
-                    )
+            finish_reason = (
+                extract_stream_finish_reason(
+                    event
+                )
+            )
 
-            if not data_lines:
-                continue
+            usage = extract_stream_usage(
+                event
+            )
 
-            raw_data = "\n".join(data_lines)
+            done = event_type in {
+                "message-end",
+                "stream-end",
+            }
 
-            try:
-                event = json.loads(raw_data)
-            except json.JSONDecodeError:
-                continue
-
-            if event_type == "content-delta":
-                delta = (
-                    event.get("delta")
-                    or {}
+            if (
+                text
+                or finish_reason
+                or usage
+                or done
+            ):
+                yield StreamChunk(
+                    content=text,
+                    provider="cohere",
+                    model=request.model,
+                    request_id=str(
+                        request.request_id
+                    ),
+                    finish_reason=finish_reason,
+                    usage=usage,
+                    done=done,
+                    metadata={
+                        "event_type": event_type,
+                    },
                 )
 
-                message = (
-                    delta.get("message")
-                    or {}
+
+def _parse_sse_events(
+    raw: str,
+) -> list[dict[str, Any]]:
+    """Parse Cohere SSE response text."""
+
+    events: list[dict[str, Any]] = []
+
+    current_data: list[str] = []
+
+    for line in raw.splitlines():
+        line = line.strip()
+
+        if not line:
+            if current_data:
+                event = _decode_event(
+                    "\n".join(current_data)
                 )
 
-                content = (
-                    message.get("content")
-                    or {}
-                )
+                if event is not None:
+                    events.append(event)
 
-                text = content.get(
-                    "text",
-                    "",
-                )
+                current_data = []
 
-                if text:
-                    yield text
-'@ | Set-Content .\ai\providers\llm\cohere\stream.py
+            continue
+
+        if line.startswith("data:"):
+            current_data.append(
+                line[5:].strip()
+            )
+
+    if current_data:
+        event = _decode_event(
+            "\n".join(current_data)
+        )
+
+        if event is not None:
+            events.append(event)
+
+    return events
+
+
+def _decode_event(
+    data: str,
+) -> dict[str, Any] | None:
+    if not data:
+        return None
+
+    if data == "[DONE]":
+        return {
+            "type": "stream-end"
+        }
+
+    try:
+        value = json.loads(data)
+    except json.JSONDecodeError:
+        return None
+
+    return value if isinstance(value, dict) else None
+
+
+__all__ = ["CohereStream"]

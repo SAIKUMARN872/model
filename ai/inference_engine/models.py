@@ -22,6 +22,7 @@ class InferenceStatus(StrEnum):
 class InferenceRequest:
     model: str
     messages: list[dict[str, Any]]
+    provider: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     top_p: float | None = None

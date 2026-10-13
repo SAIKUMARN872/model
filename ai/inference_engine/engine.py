@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 
 from .fallback import FallbackManager
 from .interfaces import InferenceBackend
@@ -35,9 +36,7 @@ class InferenceEngine:
 
         self._retry_executor = (
             retry_executor
-            or RetryExecutor(
-                RetryStrategy()
-            )
+            or RetryExecutor(RetryStrategy())
         )
 
         self._fallback_manager = (
@@ -118,9 +117,7 @@ class InferenceEngine:
     ) -> InferenceBackend:
         return await self._load_balancer.select(
             request=request,
-            backends=list(
-                self._backends.values()
-            ),
+            backends=list(self._backends.values()),
         )
 
     async def _execute_backend(
@@ -187,9 +184,7 @@ class InferenceEngine:
                 if result.latency_ms is not None
                 else latency_ms
             ),
-            time_to_first_token_ms=(
-                result.time_to_first_token_ms
-            ),
+            time_to_first_token_ms=result.time_to_first_token_ms,
         )
 
     def _record_failure(
@@ -206,9 +201,7 @@ class InferenceEngine:
         self,
         request: InferenceRequest,
     ) -> InferenceResult:
-        primary = await self._select_backend(
-            request
-        )
+        primary = await self._select_backend(request)
 
         self._record_telemetry(
             event_type="inference.started",
@@ -227,6 +220,12 @@ class InferenceEngine:
 
             latency_ms = profiler.stop()
 
+            if result.latency_ms is None:
+                result = replace(
+                    result,
+                    latency_ms=latency_ms,
+                )
+
             self._record_success(
                 result,
                 latency_ms=latency_ms,
@@ -238,11 +237,7 @@ class InferenceEngine:
                 backend=primary,
                 result=result,
                 metadata={
-                    "latency_ms": (
-                        result.latency_ms
-                        if result.latency_ms is not None
-                        else latency_ms
-                    ),
+                    "latency_ms": result.latency_ms,
                     "status": result.status.value,
                 },
             )
@@ -272,15 +267,17 @@ class InferenceEngine:
 
                 result = await self._fallback_manager.execute(
                     request=request,
-                    backends=list(
-                        self._backends.values()
-                    ),
+                    backends=list(self._backends.values()),
                     failed_backend=primary,
                 )
 
-                fallback_latency_ms = (
-                    fallback_profiler.stop()
-                )
+                fallback_latency_ms = fallback_profiler.stop()
+
+                if result.latency_ms is None:
+                    result = replace(
+                        result,
+                        latency_ms=fallback_latency_ms,
+                    )
 
                 self._record_success(
                     result,
@@ -293,11 +290,7 @@ class InferenceEngine:
                     result=result,
                     metadata={
                         "fallback": True,
-                        "latency_ms": (
-                            result.latency_ms
-                            if result.latency_ms is not None
-                            else fallback_latency_ms
-                        ),
+                        "latency_ms": result.latency_ms,
                         "status": result.status.value,
                     },
                 )
@@ -311,13 +304,9 @@ class InferenceEngine:
         self,
         request: InferenceRequest,
     ) -> AsyncIterator[InferenceResult]:
-        backend = await self._select_backend(
-            request
-        )
+        backend = await self._select_backend(request)
 
-        async for result in backend.stream(
-            request
-        ):
+        async for result in backend.stream(request):
             yield result
 
     async def health_check(

@@ -1,5 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import math
+
+from ai.latency_engine.engine import LatencyEngine
+from ai.latency_engine.exceptions import InsufficientLatencyDataError
 from ai.model_registry.engine import ModelRegistryEngine
 from ai.model_registry.models import ModelRecord
 from ai.routing_engine.models import ModelCandidate, RoutingRequest
@@ -12,15 +16,18 @@ class ModelRegistryCatalog(ModelCatalog):
     Routing catalog backed by the canonical ModelNow Model Registry.
 
     The Model Registry remains the single source of truth for model
-    metadata. This adapter only converts ModelRecord objects into
-    routing candidates.
+    metadata. This adapter converts ModelRecord objects into routing
+    candidates and enriches latency from real observations when
+    historical latency data is available.
     """
 
     def __init__(
         self,
         registry: ModelRegistryEngine,
+        latency_engine: LatencyEngine | None = None,
     ) -> None:
         self.registry = registry
+        self.latency_engine = latency_engine
 
     @staticmethod
     def _capabilities(model: ModelRecord) -> tuple[str, ...]:
@@ -45,11 +52,58 @@ class ModelRegistryCatalog(ModelCatalog):
 
         return tuple(values)
 
-    @classmethod
+    def _latency(
+        self,
+        model: ModelRecord,
+    ) -> tuple[float | None, dict[str, object]]:
+        """
+        Resolve routing latency without inventing unknown values.
+
+        Learned historical P95 takes precedence over static registry
+        latency. If there is insufficient real data, the registry
+        latency is used as a fallback.
+        """
+        metadata: dict[str, object] = {}
+
+        if self.latency_engine is not None:
+            try:
+                prediction = self.latency_engine.predict(
+                    model_id=model.model_id,
+                    provider=model.provider,
+                )
+            except InsufficientLatencyDataError:
+                prediction = None
+
+            if prediction is not None:
+                metadata.update(
+                    {
+                        "latency_source": "learned_p95",
+                        "latency_samples": prediction.samples,
+                        "latency_confidence": prediction.confidence,
+                        "latency_prediction_method": prediction.metadata.get(
+                            "prediction_method"
+                        ),
+                    }
+                )
+
+                return (
+                    prediction.predicted_latency_ms,
+                    metadata,
+                )
+
+        if model.latency_ms is not None:
+            metadata["latency_source"] = "registry"
+            return model.latency_ms, metadata
+
+        metadata["latency_source"] = "unknown"
+        return None, metadata
+
     def _to_candidate(
-        cls,
+        self,
         model: ModelRecord,
     ) -> ModelCandidate:
+        latency_ms, latency_metadata = self._latency(model)
+
         return ModelCandidate(
             model_id=model.model_id,
             provider=model.provider,
@@ -61,12 +115,8 @@ class ModelRegistryCatalog(ModelCatalog):
             ),
             input_cost=model.pricing.input_per_1m_tokens,
             output_cost=model.pricing.output_per_1m_tokens,
-            estimated_latency_ms=(
-                model.latency_ms
-                if model.latency_ms is not None
-                else 0.0
-            ),
-            capabilities=cls._capabilities(model),
+            estimated_latency_ms=latency_ms,
+            capabilities=self._capabilities(model),
             enabled=model.enabled,
             metadata={
                 "qualified_id": model.qualified_id,
@@ -76,12 +126,13 @@ class ModelRegistryCatalog(ModelCatalog):
                 "aliases": model.aliases,
                 "available": model.available,
                 "version": model.version,
+                **latency_metadata,
                 **model.metadata,
             },
         )
 
-    @staticmethod
     def _matches_request(
+        self,
         model: ModelRecord,
         request: RoutingRequest,
     ) -> bool:
@@ -107,19 +158,67 @@ class ModelRegistryCatalog(ModelCatalog):
                 return False
 
         if request.max_latency_ms is not None:
-            latency = model.latency_ms
-
+            latency, _ = self._latency(model)
             if latency is None or latency > request.max_latency_ms:
                 return False
-
         if request.max_cost is not None:
-            total_cost = (
-                model.pricing.input_per_1m_tokens
-                + model.pricing.output_per_1m_tokens
+            # Only a user-specified budget is a hard cost constraint.
+            # Inferred policy budgets remain selector preferences.
+            explicit_budget = request.metadata.get(
+                "explicit_max_cost",
+                request.max_cost is not None,
             )
 
-            if total_cost > request.max_cost:
-                return False
+            if explicit_budget is True:
+                budget = request.max_cost
+                input_tokens = request.metadata.get(
+                    "estimated_input_tokens"
+                )
+                output_tokens = request.metadata.get(
+                    "estimated_output_tokens"
+                )
+
+                # Fail closed when an explicit budget cannot be evaluated.
+                if (
+                    isinstance(budget, bool)
+                    or not isinstance(budget, (int, float))
+                    or not math.isfinite(budget)
+                    or budget < 0
+                ):
+                    return False
+
+                if (
+                    isinstance(input_tokens, bool)
+                    or not isinstance(input_tokens, int)
+                    or input_tokens < 0
+                    or isinstance(output_tokens, bool)
+                    or not isinstance(output_tokens, int)
+                    or output_tokens < 0
+                ):
+                    return False
+
+                input_rate = model.pricing.input_per_1m_tokens
+                output_rate = model.pricing.output_per_1m_tokens
+
+                if (
+                    isinstance(input_rate, bool)
+                    or not isinstance(input_rate, (int, float))
+                    or not math.isfinite(input_rate)
+                    or input_rate < 0
+                    or isinstance(output_rate, bool)
+                    or not isinstance(output_rate, (int, float))
+                    or not math.isfinite(output_rate)
+                    or output_rate < 0
+                ):
+                    return False
+
+                estimated_cost = (
+                    input_tokens * input_rate
+                    + output_tokens * output_rate
+                ) / 1_000_000
+
+                if estimated_cost > budget:
+                    return False
 
         required = {
             capability.strip().lower()
@@ -128,7 +227,7 @@ class ModelRegistryCatalog(ModelCatalog):
 
         if required:
             available = set(
-                ModelRegistryCatalog._capabilities(model)
+                self._capabilities(model)
             )
 
             if not required.issubset(available):

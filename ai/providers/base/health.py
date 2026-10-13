@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
@@ -65,4 +64,3 @@ class HealthChecker:
                     "exception_type": type(exc).__name__,
                 },
             )
-'@ | Set-Content -Path ".\ai\providers\base\health.py" -Encoding UTF8

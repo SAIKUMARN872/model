@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import time
@@ -9,23 +8,10 @@ from threading import Lock
 
 @dataclass
 class RateLimitState:
-    """
-    Normalized provider rate-limit state.
-
-    Values may come from provider response headers such as:
-        X-RateLimit-Limit
-        X-RateLimit-Remaining
-        X-RateLimit-Reset
-    """
-
     limit: int | None = None
-
     remaining: int | None = None
-
     reset_at: float | None = None
-
     retry_after: float | None = None
-
     updated_at: float | None = None
 
     def update(
@@ -38,13 +24,10 @@ class RateLimitState:
     ) -> None:
         if limit is not None:
             self.limit = limit
-
         if remaining is not None:
             self.remaining = remaining
-
         if reset_at is not None:
             self.reset_at = reset_at
-
         if retry_after is not None:
             self.retry_after = retry_after
 
@@ -52,23 +35,14 @@ class RateLimitState:
 
     @property
     def limited(self) -> bool:
-        """
-        Return whether the provider currently appears rate limited.
-        """
-
         now = time.time()
 
-        if self.retry_after is not None:
-            if self.retry_after > 0:
-                return True
+        if self.retry_after is not None and self.retry_after > 0:
+            return True
 
-        if self.remaining is not None:
-            if self.remaining <= 0:
-                if (
-                    self.reset_at is None
-                    or self.reset_at > now
-                ):
-                    return True
+        if self.remaining is not None and self.remaining <= 0:
+            if self.reset_at is None or self.reset_at > now:
+                return True
 
         return False
 
@@ -77,21 +51,10 @@ class RateLimitState:
         if self.reset_at is None:
             return 0.0
 
-        return max(
-            0.0,
-            self.reset_at - time.time(),
-        )
+        return max(0.0, self.reset_at - time.time())
 
 
 class RateLimiter:
-    """
-    Cooperative asynchronous rate limiter for ModelNow providers.
-
-    This is intentionally provider-agnostic. Each provider can
-    additionally update RateLimitState from its server response
-    headers.
-    """
-
     def __init__(
         self,
         *,
@@ -99,21 +62,15 @@ class RateLimiter:
     ) -> None:
         self.requests_per_second = (
             requests_per_second
-            if requests_per_second
-            and requests_per_second > 0
+            if requests_per_second and requests_per_second > 0
             else None
         )
 
         self.state = RateLimitState()
-
         self._lock = Lock()
         self._last_request_at = 0.0
 
     async def acquire(self) -> None:
-        """
-        Wait until the next request is allowed.
-        """
-
         await self._enforce_local_limit()
         await self._enforce_server_limit()
 
@@ -126,10 +83,7 @@ class RateLimiter:
         while True:
             with self._lock:
                 now = time.monotonic()
-
-                elapsed = (
-                    now - self._last_request_at
-                )
+                elapsed = now - self._last_request_at
 
                 if elapsed >= interval:
                     self._last_request_at = now
@@ -157,54 +111,34 @@ class RateLimiter:
         self,
         headers: dict[str, str],
     ) -> None:
-        """
-        Update server-side rate-limit state from common headers.
-
-        Unknown or malformed headers are ignored.
-        """
-
         normalized = {
             str(key).lower(): str(value).strip()
             for key, value in headers.items()
         }
 
-        limit = _parse_int(
-            normalized.get("x-ratelimit-limit")
-        )
-
-        remaining = _parse_int(
-            normalized.get("x-ratelimit-remaining")
-        )
-
-        reset_at = _parse_float(
-            normalized.get("x-ratelimit-reset")
-        )
-
-        retry_after = _parse_float(
-            normalized.get("retry-after")
-        )
-
         self.state.update(
-            limit=limit,
-            remaining=remaining,
-            reset_at=reset_at,
-            retry_after=retry_after,
+            limit=_parse_int(
+                normalized.get("x-ratelimit-limit")
+            ),
+            remaining=_parse_int(
+                normalized.get("x-ratelimit-remaining")
+            ),
+            reset_at=_parse_float(
+                normalized.get("x-ratelimit-reset")
+            ),
+            retry_after=_parse_float(
+                normalized.get("retry-after")
+            ),
         )
 
     def reset(self) -> None:
-        """
-        Reset local and server-side limiter state.
-        """
-
         with self._lock:
             self._last_request_at = 0.0
 
         self.state = RateLimitState()
 
 
-def _parse_int(
-    value: str | None,
-) -> int | None:
+def _parse_int(value: str | None) -> int | None:
     if value is None:
         return None
 
@@ -214,9 +148,7 @@ def _parse_int(
         return None
 
 
-def _parse_float(
-    value: str | None,
-) -> float | None:
+def _parse_float(value: str | None) -> float | None:
     if value is None:
         return None
 
@@ -224,4 +156,9 @@ def _parse_float(
         return float(value)
     except (TypeError, ValueError):
         return None
-'@ | Set-Content -Path ".\ai\providers\base\rate_limit.py" -Encoding UTF8
+
+
+__all__ = [
+    "RateLimitState",
+    "RateLimiter",
+]

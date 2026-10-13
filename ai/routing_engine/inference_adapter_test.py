@@ -229,7 +229,7 @@ async def main() -> None:
     assert memory_record.provider == "mock-slm"
     assert memory_record.tier == "slm"
     assert memory_record.quality_score == quality.score
-    assert memory_record.cost == 0.0
+    assert memory_record.cost == 0.00000019
     assert memory_record.success is True
     assert memory_record.task_type == "general"
 
