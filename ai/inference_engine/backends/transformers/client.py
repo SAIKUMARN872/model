@@ -44,7 +44,56 @@ class TransformersClient:
     async def _find_provider(
         self,
         model: str,
+        provider_id: str | None = None,
     ) -> BaseProvider:
+        if provider_id is not None:
+            normalized_provider_id = provider_id.strip().lower()
+
+            if not normalized_provider_id:
+                raise LookupError(
+                    f"Invalid provider selection for model: {model}"
+                )
+
+            for provider in self._providers:
+                config = getattr(provider, "config", None)
+
+                configured_provider_id = ""
+                if config is not None:
+                    configured_id = getattr(
+                        config,
+                        "provider_id",
+                        None,
+                    )
+                    if configured_id is not None:
+                        configured_provider_id = str(
+                            configured_id
+                        ).strip().lower()
+
+                provider_name = str(
+                    getattr(provider, "name", "")
+                ).strip().lower()
+
+                if (
+                    configured_provider_id
+                    != normalized_provider_id
+                    and provider_name
+                    != normalized_provider_id
+                ):
+                    continue
+
+                if not await provider.supports_model(model):
+                    raise LookupError(
+                        f"Selected provider '{provider_id}' "
+                        f"does not support model: {model}"
+                    )
+
+                return provider
+
+            raise LookupError(
+                f"Selected provider '{provider_id}' "
+                f"is not registered for model: {model}"
+            )
+
         for provider in self._providers:
             if await provider.supports_model(model):
                 return provider
@@ -93,6 +142,11 @@ class TransformersClient:
             else uuid4()
         )
 
+        metadata = dict(request.metadata)
+
+        if request.provider is not None:
+            metadata["provider"] = request.provider
+
         return ChatRequest(
             model=request.model,
             messages=messages,
@@ -105,7 +159,7 @@ class TransformersClient:
             stop=request.stop,
             seed=request.seed,
             request_id=request_id,
-            metadata=dict(request.metadata),
+            metadata=metadata,
         )
 
     @staticmethod
@@ -115,6 +169,7 @@ class TransformersClient:
         return InferenceRequest(
             model=request.model,
             messages=list(request.messages),
+            provider=request.provider,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             top_p=request.top_p,
@@ -221,7 +276,8 @@ class TransformersClient:
         request: InferenceRequest,
     ) -> InferenceResult:
         provider = await self._find_provider(
-            request.model
+            request.model,
+            request.provider,
         )
 
         if not provider.initialized:
@@ -237,7 +293,8 @@ class TransformersClient:
         request: InferenceRequest,
     ) -> AsyncIterator[InferenceResult]:
         provider = await self._find_provider(
-            request.model
+            request.model,
+            request.provider,
         )
 
         if not provider.initialized:
@@ -258,3 +315,4 @@ class TransformersClient:
 
 
 __all__ = ["TransformersClient"]
+

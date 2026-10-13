@@ -1,14 +1,14 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
-import json as jsonlib
-from typing import Any
+import time
+from typing import Any, AsyncIterator
 
-from ai.providers.base import (
-    BaseClient,
+import httpx
+
+from ai.providers.base.client import BaseClient
+from ai.providers.base.exceptions import (
     ProviderAuthenticationError,
     ProviderAuthorizationError,
-    ProviderConfig,
     ProviderConfigurationError,
     ProviderError,
     ProviderModelNotFoundError,
@@ -16,376 +16,238 @@ from ai.providers.base import (
     ProviderResponseError,
     ProviderTimeoutError,
     ProviderUnavailableError,
-    RateLimiter,
-    RetryManager,
-    RetryPolicy,
 )
+from ai.providers.base.config import ProviderConfig
 
 from .config import AzureOpenAIConfig
+from .stream import parse_sse_stream
 
 
 class AzureOpenAIClient(BaseClient):
-    name = "azure_openai"
-
     def __init__(
         self,
-        config: ProviderConfig,
-        azure_config: AzureOpenAIConfig,
+        config: ProviderConfig | AzureOpenAIConfig,
     ) -> None:
-        super().__init__(config)
+        if isinstance(config, AzureOpenAIConfig):
+            self.azure_config = config
 
-        self.azure_config = azure_config
-        self._http_client: Any | None = None
-
-        self.retry_manager = RetryManager(
-            RetryPolicy(
-                max_attempts=max(1, config.max_retries),
+            provider_config = ProviderConfig(
+                provider_id="azure_openai",
+                api_key=config.api_key,
+                base_url=config.endpoint,
+                timeout_seconds=config.timeout_seconds,
+                connect_timeout_seconds=config.connect_timeout_seconds,
+                max_retries=config.max_retries,
+                enabled=config.enabled,
             )
-        )
+        else:
+            provider_config = config
 
-        self.rate_limiter = RateLimiter()
+            self.azure_config = AzureOpenAIConfig(
+                endpoint=config.base_url or "",
+                api_key=config.api_key,
+                timeout_seconds=config.timeout_seconds,
+                connect_timeout_seconds=config.connect_timeout_seconds,
+                max_retries=config.max_retries,
+                enabled=config.enabled,
+            )
+
+        super().__init__(provider_config)
+
+        self._http: httpx.AsyncClient | None = None
 
     async def initialize(self) -> None:
-        if self._http_client is not None:
+        if self._http is not None:
             return
 
-        try:
-            import httpx
-        except ImportError as exc:
+        if not self.azure_config.endpoint:
             raise ProviderConfigurationError(
-                "httpx is required for the Azure OpenAI provider. "
-                "Install it with: pip install httpx",
-                provider=self.name,
-                retryable=False,
-            ) from exc
+                "Azure OpenAI endpoint is not configured"
+            )
 
-        timeout = httpx.Timeout(
-            timeout=self.azure_config.timeout_seconds,
-            connect=min(
-                self.azure_config.timeout_seconds,
-                10.0,
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                timeout=self.azure_config.timeout_seconds,
+                connect=self.azure_config.connect_timeout_seconds,
             ),
+            headers=self.azure_config.headers,
         )
 
-        self._http_client = httpx.AsyncClient(
-            base_url=self.azure_config.base_url,
-            headers=self.azure_config.headers(),
-            timeout=timeout,
-        )
+        self._closed = False
 
-        self._initialized = True
-
-    def _extract_request_id(
-        self,
-        response: Any,
-    ) -> str | None:
-        headers = getattr(response, "headers", {})
-
-        return (
-            headers.get("x-request-id")
-            or headers.get("x-ms-request-id")
-            or headers.get("request-id")
-        )
-
-    def _extract_retry_after(
-        self,
-        response: Any,
-    ) -> float | None:
-        headers = getattr(response, "headers", {})
-
-        value = headers.get("retry-after")
-
-        if value is None:
-            return None
-
-        try:
-            parsed = float(value)
-
-            if parsed >= 0:
-                return parsed
-
-        except (TypeError, ValueError):
-            pass
-
-        return None
-
-    def _response_details(
-        self,
-        response: Any,
-    ) -> dict[str, Any]:
-        details: dict[str, Any] = {}
-
-        request_id = self._extract_request_id(response)
-
-        if request_id:
-            details["request_id"] = request_id
-
-        retry_after = self._extract_retry_after(response)
-
-        if retry_after is not None:
-            details["retry_after_seconds"] = retry_after
-
-        try:
-            payload = response.json()
-
-            if isinstance(payload, dict):
-                details["response"] = payload
-
-        except Exception:
-            text = getattr(response, "text", "")
-
-            if text:
-                details["response_text"] = text[:4000]
-
-        return details
-
-    def _raise_for_status(
-        self,
-        response: Any,
-    ) -> None:
-        status_code = int(response.status_code)
-
-        if status_code < 400:
-            return
-
-        request_id = self._extract_request_id(response)
-        retry_after = self._extract_retry_after(response)
-        details = self._response_details(response)
-
-        try:
-            payload = response.json()
-
-            if isinstance(payload, dict):
-                error_payload = payload.get("error")
-
-                if isinstance(error_payload, dict):
-                    message = str(
-                        error_payload.get(
-                            "message",
-                            "Azure OpenAI request failed.",
-                        )
-                    )
-
-                    if error_payload.get("code"):
-                        details["azure_code"] = (
-                            error_payload["code"]
-                        )
-
-                else:
-                    message = str(
-                        payload.get(
-                            "message",
-                            "Azure OpenAI request failed.",
-                        )
-                    )
-            else:
-                message = (
-                    response.text
-                    or "Azure OpenAI request failed."
-                )
-
-        except Exception:
-            message = (
-                getattr(response, "text", None)
-                or "Azure OpenAI request failed."
-            )
-
-        common = {
-            "provider": self.name,
-            "status_code": status_code,
-            "request_id": request_id,
-            "details": details,
-        }
-
-        if status_code == 401:
-            raise ProviderAuthenticationError(
-                message,
-                retryable=False,
-                **common,
-            )
-
-        if status_code == 403:
-            raise ProviderAuthorizationError(
-                message,
-                retryable=False,
-                **common,
-            )
-
-        if status_code == 404:
-            raise ProviderModelNotFoundError(
-                message,
-                retryable=False,
-                **common,
-            )
-
-        if status_code == 408:
-            raise ProviderTimeoutError(
-                message,
-                retryable=True,
-                **common,
-            )
-
-        if status_code == 409:
+    def _ensure_client(self) -> httpx.AsyncClient:
+        if self._http is None or self._closed:
             raise ProviderError(
-                message,
-                retryable=True,
-                **common,
+                "Azure OpenAI client is not initialized"
             )
 
-        if status_code == 429:
-            raise ProviderRateLimitError(
-                message,
-                retry_after=retry_after,
-                provider=self.name,
-                status_code=status_code,
-                request_id=request_id,
-                retryable=True,
-                details=details,
-            )
-
-        if 500 <= status_code <= 599:
-            raise ProviderUnavailableError(
-                message,
-                retryable=True,
-                **common,
-            )
-
-        if 400 <= status_code <= 499:
-            raise ProviderResponseError(
-                message,
-                retryable=False,
-                **common,
-            )
-
-        raise ProviderResponseError(
-            message,
-            retryable=False,
-            **common,
-        )
-
-    async def _request_once(
-        self,
-        *,
-        method: str,
-        path: str,
-        headers: dict[str, str] | None,
-        json: dict[str, Any] | None,
-        params: dict[str, Any] | None,
-    ) -> Any:
-        if self._http_client is None:
-            raise ProviderConfigurationError(
-                "Azure OpenAI HTTP client is not initialized.",
-                provider=self.name,
-                retryable=False,
-            )
-
-        await self.rate_limiter.acquire()
-
-        try:
-            response = await self._http_client.request(
-                method=method,
-                url=path,
-                headers=headers,
-                json=json,
-                params=params,
-            )
-
-        except TimeoutError as exc:
-            raise ProviderTimeoutError(
-                "Azure OpenAI request timed out.",
-                provider=self.name,
-                retryable=True,
-            ) from exc
-
-        except Exception as exc:
-            error_name = type(exc).__name__
-
-            if error_name in {
-                "ConnectError",
-                "ConnectTimeout",
-                "ReadTimeout",
-                "WriteTimeout",
-                "PoolTimeout",
-            }:
-                raise ProviderUnavailableError(
-                    f"Azure OpenAI network error: {exc}",
-                    provider=self.name,
-                    retryable=True,
-                ) from exc
-
-            raise ProviderError(
-                f"Azure OpenAI request failed: {exc}",
-                provider=self.name,
-                retryable=False,
-            ) from exc
-
-        response_headers = dict(
-            getattr(response, "headers", {})
-        )
-
-        self.rate_limiter.update_from_headers(
-            response_headers
-        )
-
-        self._raise_for_status(response)
-
-        if not response.content:
-            return None
-
-        content_type = (
-            response.headers.get(
-                "content-type",
-                "",
-            ).lower()
-        )
-
-        if "application/json" in content_type:
-            return response.json()
-
-        try:
-            return jsonlib.loads(response.text)
-
-        except (TypeError, ValueError):
-            return response.text
+        return self._http
 
     async def request(
         self,
-        *,
-        method: str,
-        path: str,
-        headers: dict[str, str] | None = None,
-        json: dict[str, Any] | None = None,
-        params: dict[str, Any] | None = None,
-    ) -> Any:
-        await self.initialize()
+        deployment: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        client = self._ensure_client()
 
-        if not self.config.retry_enabled:
-            return await self._request_once(
-                method=method,
-                path=path,
-                headers=headers,
-                json=json,
-                params=params,
-            )
+        url = self.azure_config.deployment_url(deployment)
 
-        return await self.retry_manager.execute(
-            lambda: self._request_once(
-                method=method,
-                path=path,
-                headers=headers,
-                json=json,
-                params=params,
-            )
+        last_error: Exception | None = None
+
+        for attempt in range(self.azure_config.max_retries + 1):
+            started = time.perf_counter()
+
+            try:
+                response = await client.post(
+                    url,
+                    json=payload,
+                )
+
+                elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+                if response.status_code == 200:
+                    return {
+                        "data": response.json(),
+                        "request_id": response.headers.get(
+                            "x-request-id"
+                        ),
+                        "latency_ms": elapsed_ms,
+                    }
+
+                await self._raise_for_status(response)
+
+            except httpx.TimeoutException as exc:
+                last_error = exc
+
+                if attempt >= self.azure_config.max_retries:
+                    raise ProviderTimeoutError(
+                        "Azure OpenAI request timed out"
+                    ) from exc
+
+            except (
+                ProviderRateLimitError,
+                ProviderUnavailableError,
+            ) as exc:
+                last_error = exc
+
+                if attempt >= self.azure_config.max_retries:
+                    raise
+
+            except httpx.HTTPError as exc:
+                last_error = exc
+
+                if attempt >= self.azure_config.max_retries:
+                    raise ProviderUnavailableError(
+                        f"Azure OpenAI transport error: {exc}"
+                    ) from exc
+
+            if attempt < self.azure_config.max_retries:
+                await self._backoff(attempt)
+
+        raise ProviderError(
+            "Azure OpenAI request failed"
+        ) from last_error
+
+    async def stream(
+        self,
+        deployment: str,
+        payload: dict[str, Any],
+    ) -> AsyncIterator[Any]:
+        client = self._ensure_client()
+
+        url = self.azure_config.deployment_url(deployment)
+
+        payload = dict(payload)
+        payload["stream"] = True
+
+        try:
+            async with client.stream(
+                "POST",
+                url,
+                json=payload,
+            ) as response:
+                if response.status_code != 200:
+                    await self._raise_for_status(response)
+
+                request_id = response.headers.get("x-request-id")
+
+                async for chunk in parse_sse_stream(
+                    response,
+                    model=deployment,
+                    request_id=request_id,
+                ):
+                    yield chunk
+
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(
+                "Azure OpenAI streaming request timed out"
+            ) from exc
+
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailableError(
+                f"Azure OpenAI streaming transport error: {exc}"
+            ) from exc
+
+    async def _raise_for_status(
+        self,
+        response: httpx.Response,
+    ) -> None:
+        status = response.status_code
+
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+
+        error = data.get("error") or {}
+        message = error.get(
+            "message",
+            response.text or "Azure OpenAI request failed",
         )
 
+        if status in {401}:
+            raise ProviderAuthenticationError(message)
+
+        if status in {403}:
+            raise ProviderAuthorizationError(message)
+
+        if status == 404:
+            raise ProviderModelNotFoundError(message)
+
+        if status == 429:
+            retry_after = response.headers.get("retry-after")
+
+            try:
+                retry_after_value = (
+                    float(retry_after)
+                    if retry_after is not None
+                    else None
+                )
+            except ValueError:
+                retry_after_value = None
+
+            raise ProviderRateLimitError(
+                message,
+                retry_after=retry_after_value,
+            )
+
+        if status in {408, 502, 503, 504}:
+            raise ProviderUnavailableError(message)
+
+        raise ProviderResponseError(
+            f"Azure OpenAI HTTP {status}: {message}"
+        )
+
+    async def _backoff(self, attempt: int) -> None:
+        import asyncio
+
+        delay = min(2.0 ** attempt, 8.0)
+        await asyncio.sleep(delay)
+
     async def close(self) -> None:
-        if self._http_client is not None:
-            await self._http_client.aclose()
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
 
-            self._http_client = None
+        self._closed = True
 
-        self._initialized = False
-
-
-__all__ = ["AzureOpenAIClient"]
-'@ | Set-Content ".\ai\providers\llm\azure_openai\client.py"

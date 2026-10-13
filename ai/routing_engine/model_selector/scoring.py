@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from ai.routing_engine.constants import RoutingObjective
 from ai.routing_engine.models import ModelCandidate
@@ -37,26 +37,35 @@ def normalized_latency(
     candidate: ModelCandidate,
     candidates: list[ModelCandidate],
 ) -> float:
-    latencies = [
+    known_latencies = [
         item.estimated_latency_ms
         for item in candidates
-        if item.estimated_latency_ms > 0.0
+        if item.estimated_latency_ms is not None
+        and item.estimated_latency_ms > 0.0
     ]
 
-    if not latencies:
-        return 1.0
+    if not known_latencies:
+        return 0.0
 
-    maximum = max(latencies)
+    if candidate.estimated_latency_ms is None:
+        return 0.0
 
     if candidate.estimated_latency_ms <= 0.0:
         return 0.0
+
+    minimum = min(known_latencies)
+    maximum = max(known_latencies)
+
+    if maximum == minimum:
+        return 1.0
 
     return max(
         0.0,
         min(
             1.0,
             1.0 - (
-                candidate.estimated_latency_ms / maximum
+                (candidate.estimated_latency_ms - minimum)
+                / (maximum - minimum)
             ),
         ),
     )
@@ -66,6 +75,9 @@ def score_candidate(
     candidate: ModelCandidate,
     candidates: list[ModelCandidate],
     objective: RoutingObjective,
+    quality_weight: float = 0.50,
+    cost_weight: float = 0.25,
+    latency_weight: float = 0.25,
 ) -> float:
     quality = normalized_quality(candidate)
     cost = normalized_cost(candidate, candidates)
@@ -81,9 +93,9 @@ def score_candidate(
         return latency
 
     return (
-        (quality * 0.50)
-        + (cost * 0.25)
-        + (latency * 0.25)
+        (quality * quality_weight)
+        + (cost * cost_weight)
+        + (latency * latency_weight)
     )
 
 

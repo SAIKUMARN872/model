@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterable
@@ -271,4 +270,3 @@ __all__ = [
     "StreamState",
     "collect_stream",
 ]
-'@ | Set-Content ".\ai\providers\base\streaming.py" -Encoding UTF8

@@ -1,55 +1,61 @@
-@'
+from __future__ import annotations
+
+import re
+
+
+_TOKEN_PATTERN = re.compile(
+    r"\w+|[^\w\s]",
+    re.UNICODE,
+)
+
+
 class OpenRouterTokenizer:
     """
-    Lightweight token estimate.
+    Lightweight tokenizer approximation.
 
-    ModelNow should use provider-reported usage
-    for authoritative billing/accounting.
+    OpenRouter serves many different underlying tokenizers, so there
+    is no single tokenizer that is correct for every routed model.
+    This class intentionally provides a deterministic estimate for
+    routing/cost decisions when an exact provider tokenizer is not
+    available.
     """
 
-    @staticmethod
-    def count_tokens(
+    def __init__(
+        self,
+        model: str,
+    ) -> None:
+        self.model = model
+
+    def encode(
+        self,
+        text: str,
+    ) -> list[str]:
+        if not text:
+            return []
+
+        return _TOKEN_PATTERN.findall(text)
+
+    def count_text(
+        self,
         text: str,
     ) -> int:
+        return len(self.encode(text))
 
-        if not text:
-            return 0
-
-        return max(
-            1,
-            len(text) // 4,
-        )
-
-    @staticmethod
     def count_messages(
+        self,
         messages,
     ) -> int:
-
         total = 0
 
         for message in messages:
-            content = (
-                message.content
-                if hasattr(
-                    message,
-                    "content",
-                )
-                else message.get(
-                    "content",
-                    "",
-                )
+            total += 4
+            total += self.count_text(
+                str(message.content)
             )
 
-            if isinstance(
-                content,
-                str,
-            ):
-                total += (
-                    OpenRouterTokenizer
-                    .count_tokens(
-                        content
-                    )
+            if getattr(message, "name", None):
+                total += self.count_text(
+                    str(message.name)
                 )
 
-        return total
-'@ | Set-Content .\ai\providers\llm\openrouter\tokenizer.py
+        return total + 2

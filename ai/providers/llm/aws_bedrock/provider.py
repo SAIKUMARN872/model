@@ -1,362 +1,272 @@
-@'
 from __future__ import annotations
 
-import time
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import AsyncIterator
 
 from ai.providers.base.config import ProviderConfig
-from ai.providers.base.models import (
-    ModelCapability,
-    ModelInfo,
-    ProviderHealth,
-    ProviderMetadata,
-    ProviderStatus,
-    ProviderTier,
-)
 from ai.providers.base.provider import BaseProvider
 from ai.providers.base.request import ChatRequest
-from ai.providers.base.response import ChatResponse, StreamChunk
-
-from .chat import (
-    build_converse_payload,
-    parse_converse_response,
+from ai.providers.base.response import (
+    ChatResponse,
+    StreamChunk,
 )
+from ai.providers.base.models import (
+    ProviderHealth,
+    ProviderMetadata,
+)
+
+from .chat import AWSBedrockChat
 from .client import AWSBedrockClient
 from .config import AWSBedrockConfig
 from .models import (
-    DEFAULT_BEDROCK_MODELS,
-    BedrockModel,
+    AWSBedrockModel,
+    DEFAULT_AWS_BEDROCK_MODELS,
 )
-from .stream import (
-    build_stream_payload,
-    parse_bedrock_event,
+from .stream import AWSBedrockStreamParser
+from .tokenizer import AWSBedrockTokenizer
+from .utils import (
+    parse_model_summary,
+    request_to_converse_payload,
 )
 
 
 class AWSBedrockProvider(BaseProvider):
-    """
-    ModelNow provider adapter for Amazon Bedrock.
-
-    Responsibilities:
-    - expose Bedrock models to ModelNow
-    - normalize ModelNow requests
-    - execute Converse requests
-    - execute ConverseStream requests
-    - normalize responses
-    - expose provider health and metadata
-    """
-
     name = "aws_bedrock"
-    version = "1.0.0"
 
     def __init__(
         self,
-        config: ProviderConfig,
-        *,
-        bedrock_config: AWSBedrockConfig | None = None,
-        models: tuple[BedrockModel, ...] | list[BedrockModel] | None = None,
+        config: ProviderConfig | AWSBedrockConfig | None = None,
     ) -> None:
-        super().__init__(config)
+        if config is None:
+            provider_config = ProviderConfig(
+                provider_id="aws_bedrock"
+            )
+            bedrock_config = (
+                AWSBedrockConfig.from_provider_config(
+                    provider_config
+                )
+            )
 
-        self.bedrock_config = (
-            bedrock_config
-            if bedrock_config is not None
-            else AWSBedrockConfig.from_env()
+        elif isinstance(
+            config,
+            AWSBedrockConfig,
+        ):
+            bedrock_config = config
+            provider_config = ProviderConfig(
+                provider_id="aws_bedrock",
+                timeout_seconds=(
+                    config.timeout_seconds
+                ),
+                connect_timeout_seconds=(
+                    config.connect_timeout_seconds
+                ),
+                max_retries=config.max_retries,
+                retry_enabled=config.retry_enabled,
+                enabled=config.enabled,
+                base_url=config.endpoint_url,
+            )
+
+        else:
+            provider_config = config
+            bedrock_config = (
+                AWSBedrockConfig.from_provider_config(
+                    config
+                )
+            )
+
+        super().__init__(
+            provider_config
         )
 
-        self.models = tuple(
-            models
-            if models is not None
-            else DEFAULT_BEDROCK_MODELS
-        )
+        self.bedrock_config = bedrock_config
 
         self.client = AWSBedrockClient(
-            config,
-            bedrock_config=self.bedrock_config,
+            bedrock_config
         )
+
+        self.chat_client = AWSBedrockChat(
+            self.client
+        )
+
+        self.tokenizer = AWSBedrockTokenizer()
+
+        self._models: dict[
+            str,
+            AWSBedrockModel,
+        ] = {
+            model.id: model
+            for model in DEFAULT_AWS_BEDROCK_MODELS
+        }
 
     @property
     def metadata(self) -> ProviderMetadata:
         return ProviderMetadata(
-            provider_id=self.config.provider_id,
+            provider_id="aws_bedrock",
             display_name="AWS Bedrock",
-            version=self.version,
-            tier_support=frozenset(
-                {
-                    ProviderTier.SLM,
-                    ProviderTier.MLM,
-                    ProviderTier.LLM,
-                }
-            ),
-            capabilities=frozenset(
-                {
-                    ModelCapability.CHAT,
-                    ModelCapability.STREAMING,
-                    ModelCapability.TOOL_USE,
-                    ModelCapability.STRUCTURED_OUTPUT,
-                }
-            ),
-            enterprise_ready=True,
-            streaming_supported=True,
-            tool_use_supported=True,
-            metadata={
-                "provider_family": "aws",
-                "service": "amazon-bedrock",
-                "transport": "boto3",
-            },
+            website="https://aws.amazon.com/bedrock/",
         )
 
     async def initialize(self) -> None:
-        """
-        Initialize the underlying Bedrock client.
-        """
-
-        if self.initialized:
+        if not self.bedrock_config.enabled:
+            self._initialized = False
             return
-
-        await self.client.initialize()
 
         self._initialized = True
 
     async def close(self) -> None:
-        """
-        Close the underlying Bedrock client.
-        """
-
-        if not self.initialized:
-            return
-
-        await self.client.close()
-
+        self.client.close()
         self._initialized = False
 
-    async def health_check(self) -> ProviderHealth:
-        """
-        Check Bedrock provider health.
+    async def health_check(
+        self,
+    ) -> ProviderHealth:
+        if not self.bedrock_config.enabled:
+            return ProviderHealth(
+                provider_id="aws_bedrock",
+                status="disabled",
+                message="AWS Bedrock provider is disabled",
+            )
 
-        This method intentionally avoids making a model inference
-        request. It verifies that the provider client is initialized
-        and available.
-        """
+        if not self.bedrock_config.configured:
+            return ProviderHealth(
+                provider_id="aws_bedrock",
+                status="unknown",
+                message=(
+                    "AWS credentials are not configured"
+                ),
+            )
 
-        started = time.perf_counter()
+        healthy = await self.client.health_check()
+
+        if healthy:
+            return ProviderHealth(
+                provider_id="aws_bedrock",
+                status="ready",
+                message="AWS Bedrock is reachable",
+            )
+
+        return ProviderHealth(
+            provider_id="aws_bedrock",
+            status="degraded",
+            message="AWS Bedrock health check failed",
+        )
+
+    async def list_models(
+        self,
+    ) -> list:
+        if not self.bedrock_config.configured:
+            return [
+                model.to_model_info()
+                for model in self._models.values()
+            ]
 
         try:
-            if not self.config.enabled:
-                return ProviderHealth(
-                    healthy=False,
-                    provider=self.name,
-                    status=ProviderStatus.DISABLED,
-                    latency_ms=0.0,
-                    message="AWS Bedrock provider is disabled.",
-                    metadata={
-                        "region": self.bedrock_config.region_name,
-                    },
-                )
-
-            if not self.initialized:
-                return ProviderHealth(
-                    healthy=False,
-                    provider=self.name,
-                    status=ProviderStatus.UNAVAILABLE,
-                    latency_ms=(
-                        time.perf_counter() - started
-                    ) * 1000,
-                    message="AWS Bedrock provider is not initialized.",
-                    metadata={
-                        "region": self.bedrock_config.region_name,
-                    },
-                )
-
-            client_ready = getattr(
-                self.client,
-                "client",
-                None,
-            ) is not None
-
-            latency_ms = (
-                time.perf_counter() - started
-            ) * 1000
-
-            if not client_ready:
-                return ProviderHealth(
-                    healthy=False,
-                    provider=self.name,
-                    status=ProviderStatus.DEGRADED,
-                    latency_ms=latency_ms,
-                    message="Bedrock runtime client is unavailable.",
-                    metadata={
-                        "region": self.bedrock_config.region_name,
-                    },
-                )
-
-            return ProviderHealth(
-                healthy=True,
-                provider=self.name,
-                status=ProviderStatus.READY,
-                latency_ms=latency_ms,
-                message="AWS Bedrock provider is ready.",
-                metadata={
-                    "region": self.bedrock_config.region_name,
-                    "model_count": len(self.models),
-                },
+            summaries = (
+                await self.client.list_models()
             )
 
-        except Exception as exc:
-            latency_ms = (
-                time.perf_counter() - started
-            ) * 1000
+            discovered: dict[
+                str,
+                AWSBedrockModel,
+            ] = {}
 
-            return ProviderHealth(
-                healthy=False,
-                provider=self.name,
-                status=ProviderStatus.UNAVAILABLE,
-                latency_ms=latency_ms,
-                message=str(exc),
-                metadata={
-                    "region": self.bedrock_config.region_name,
-                    "error_type": type(exc).__name__,
-                },
-            )
+            for summary in summaries:
+                model = parse_model_summary(
+                    summary
+                )
 
-    async def list_models(self) -> list[ModelInfo]:
-        """
-        Return normalized ModelNow model metadata.
-        """
+                if model is not None:
+                    discovered[model.id] = model
+
+            if discovered:
+                self._models = discovered
+
+        except Exception:
+            pass
 
         return [
-            ModelInfo(
-                id=model.model_id,
-                provider=self.name,
-                aliases=(),
-                tier=model.tier,
-                capabilities=model.capabilities,
-                context_window=model.context_window,
-                max_output_tokens=model.max_output_tokens,
-                input_cost_per_1m_tokens=(
-                    model.input_cost_per_1k_tokens * 1000
-                ),
-                output_cost_per_1m_tokens=(
-                    model.output_cost_per_1k_tokens * 1000
-                ),
-                estimated_latency_ms=model.latency_ms,
-                quality_score=model.quality_score,
-                enabled=model.enabled,
-                metadata={
-                    "display_name": model.display_name,
-                    "provider_family": model.provider_family,
-                    "bedrock_model_id": model.model_id,
-                },
-            )
-            for model in self.models
+            model.to_model_info()
+            for model in self._models.values()
         ]
 
-    async def supports_model(
+    def supports_model(
         self,
-        model_id: str,
+        model: str,
     ) -> bool:
-        """
-        Check whether this adapter supports a Bedrock model.
-        """
+        normalized = model.strip().lower()
 
-        normalized = model_id.strip().lower()
+        for candidate in self._models.values():
+            if candidate.id.lower() == normalized:
+                return True
 
-        return any(
-            model.model_id.lower() == normalized
-            for model in self.models
-        )
+            if any(
+                alias.lower() == normalized
+                for alias in candidate.aliases
+            ):
+                return True
 
-    def _get_model(
-        self,
-        model_id: str,
-    ) -> BedrockModel:
-        """
-        Resolve a configured Bedrock model.
-        """
-
-        normalized = model_id.strip().lower()
-
-        for model in self.models:
-            if model.model_id.lower() == normalized:
-                return model
-
-        raise ValueError(
-            f"Unsupported AWS Bedrock model: {model_id}"
-        )
+        return False
 
     async def chat(
         self,
         request: ChatRequest,
     ) -> ChatResponse:
-        """
-        Execute a non-streaming Bedrock Converse request.
-        """
-
         self.ensure_enabled()
         await self.ensure_initialized()
 
-        self._get_model(request.model)
+        if not self.supports_model(
+            request.model
+        ):
+            raise ValueError(
+                f"Unsupported AWS Bedrock model: "
+                f"{request.model}"
+            )
 
-        payload = build_converse_payload(request)
+        if not self.bedrock_config.configured:
+            raise RuntimeError(
+                "AWS Bedrock credentials are not configured"
+            )
 
-        started = time.perf_counter()
-
-        response = await self.client.converse(
-            payload
+        return await self.chat_client.complete(
+            request
         )
-
-        result = parse_converse_response(
-            response,
-            provider=self.name,
-            request_id=str(request.request_id),
-        )
-
-        result.model = request.model
-        result.latency_ms = (
-            time.perf_counter() - started
-        ) * 1000
-
-        result.metadata.update(
-            {
-                "region": self.bedrock_config.region_name,
-                "provider_version": self.version,
-            }
-        )
-
-        return result
 
     async def stream(
         self,
         request: ChatRequest,
     ) -> AsyncIterator[StreamChunk]:
-        """
-        Execute a Bedrock ConverseStream request.
-        """
-
         self.ensure_enabled()
         await self.ensure_initialized()
 
-        self._get_model(request.model)
-
-        payload = build_stream_payload(request)
-
-        request_id = str(request.request_id)
-
-        async for event in self.client.converse_stream(
-            payload
+        if not self.supports_model(
+            request.model
         ):
-            chunk = parse_bedrock_event(
-                event,
-                provider=self.name,
-                model=request.model,
-                request_id=request_id,
+            raise ValueError(
+                f"Unsupported AWS Bedrock model: "
+                f"{request.model}"
             )
 
-            yield chunk
+        if not self.bedrock_config.configured:
+            raise RuntimeError(
+                "AWS Bedrock credentials are not configured"
+            )
 
+        payload = request_to_converse_payload(
+            request
+        )
 
-__all__ = [
-    "AWSBedrockProvider",
-]
-'@ | Set-Content ".\ai\providers\llm\aws_bedrock\provider.py"
+        parser = AWSBedrockStreamParser(
+            model=request.model,
+            request_id=str(
+                request.request_id
+            ),
+        )
+
+        async for event in self.client.stream(
+            payload
+        ):
+            chunk = parser.parse_event(
+                event
+            )
+
+            if chunk is not None:
+                yield chunk

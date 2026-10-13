@@ -1,16 +1,19 @@
-@'
-from .client import XAIClient
 from .config import XAIConfig
-from .models import XAIModelInfo, XAI_MODELS
-from .provider import XAIProvider
+from .models import DEFAULT_XAI_MODELS, XAIModel, get_default_models
+from .client import XAIClient
+from .chat import XAIChat
+from .stream import XAIStreamParser
 from .tokenizer import XAITokenizer
+from .provider import XAIProvider
 
 __all__ = [
-    "XAIClient",
     "XAIConfig",
-    "XAIModelInfo",
-    "XAI_MODELS",
-    "XAIProvider",
+    "DEFAULT_XAI_MODELS",
+    "XAIModel",
+    "get_default_models",
+    "XAIClient",
+    "XAIChat",
+    "XAIStreamParser",
     "XAITokenizer",
+    "XAIProvider",
 ]
-'@ | Set-Content .\ai\providers\llm\xai\__init__.py

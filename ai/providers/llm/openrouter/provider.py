@@ -1,128 +1,201 @@
-@'
-from typing import Iterator
+from __future__ import annotations
+
+from typing import AsyncIterator
 
 from ai.providers.base.provider import BaseProvider
-from ai.providers.base.request import ProviderRequest
-from ai.providers.base.response import ProviderResponse
-from ai.providers.exceptions import (
-    ProviderAuthenticationError,
-    ProviderExecutionError,
-    ProviderRateLimitError,
-    ProviderTimeoutError,
-    ProviderUnavailableError,
+from ai.providers.base.request import ChatRequest
+from ai.providers.base.response import (
+    ChatResponse,
+    StreamChunk,
 )
 
 from .chat import OpenRouterChat
-from .client import (
-    OpenRouterAuthenticationError,
-    OpenRouterClient,
-    OpenRouterClientError,
-    OpenRouterRateLimitError,
-    OpenRouterTimeoutError,
-    OpenRouterUnavailableError,
-)
+from .client import OpenRouterClient
 from .config import OpenRouterConfig
-from .stream import OpenRouterStream
+from .models import (
+    DEFAULT_OPENROUTER_MODELS,
+    OpenRouterModel,
+)
+from .stream import OpenRouterStreamParser
+from .utils import parse_model
 
 
 class OpenRouterProvider(BaseProvider):
-    provider_id = "openrouter"
-
     def __init__(
         self,
         config: OpenRouterConfig | None = None,
-    ):
-        self.config = (
-            config
-            or OpenRouterConfig.from_env()
+    ) -> None:
+        self.openrouter_config = (
+            config or OpenRouterConfig.from_env()
         )
+
+        super().__init__(self.openrouter_config)
 
         self.client = OpenRouterClient(
-            self.config
+            self.openrouter_config
         )
 
-        self.chat = OpenRouterChat(
+        self.chat_client = OpenRouterChat(
             self.client
         )
 
-        self.stream_client = (
-            OpenRouterStream(
-                self.client
+        self._models: list[OpenRouterModel] = [
+            *DEFAULT_OPENROUTER_MODELS
+        ]
+
+    @property
+    def name(self) -> str:
+        return "openrouter"
+
+    @property
+    def metadata(self):
+        return {
+            "provider": "openrouter",
+            "endpoint": self.openrouter_config.base_url,
+            "model_count": len(self._models),
+        }
+
+    async def initialize(self) -> None:
+        if not self.openrouter_config.enabled:
+            self._initialized = False
+            return
+
+        self._initialized = True
+
+    async def close(self) -> None:
+        self._initialized = False
+
+    async def health_check(self):
+        from ai.providers.base.models import ProviderHealth
+
+        if not self.openrouter_config.enabled:
+            return ProviderHealth(
+                provider="openrouter",
+                status="disabled",
+                message="OpenRouter provider is disabled.",
             )
+
+        if not self.openrouter_config.api_key:
+            return ProviderHealth(
+                provider="openrouter",
+                status="unknown",
+                message=(
+                    "OPENROUTER_API_KEY is not configured."
+                ),
+            )
+
+        try:
+            await self.client.list_models()
+
+            return ProviderHealth(
+                provider="openrouter",
+                status="ready",
+                message="OpenRouter API is reachable.",
+            )
+
+        except Exception as exc:
+            return ProviderHealth(
+                provider="openrouter",
+                status="unavailable",
+                message=str(exc),
+            )
+
+    async def list_models(
+        self,
+    ) -> list:
+        if not self.openrouter_config.api_key:
+            return [
+                model.to_model_info()
+                for model in self._models
+            ]
+
+        try:
+            data = await self.client.list_models()
+
+            remote_models = data.get("data") or []
+
+            parsed = [
+                parse_model(item)
+                for item in remote_models
+                if item.get("id")
+            ]
+
+            if parsed:
+                self._models = parsed
+
+        except Exception:
+            pass
+
+        return [
+            model.to_model_info()
+            for model in self._models
+        ]
+
+    async def supports_model(
+        self,
+        model: str,
+    ) -> bool:
+        return any(
+            item.id == model
+            for item in self._models
         )
 
-    def generate(
+    async def chat(
         self,
-        request: ProviderRequest,
-    ) -> ProviderResponse:
-
-        try:
-            return self.chat.generate(
-                request
+        request: ChatRequest,
+    ) -> ChatResponse:
+        if not self.openrouter_config.enabled:
+            raise RuntimeError(
+                "OpenRouter provider is disabled."
             )
 
-        except OpenRouterAuthenticationError as exc:
-            raise ProviderAuthenticationError(
-                str(exc)
-            ) from exc
+        if not self.openrouter_config.api_key:
+            raise RuntimeError(
+                "OPENROUTER_API_KEY is not configured."
+            )
 
-        except OpenRouterRateLimitError as exc:
-            raise ProviderRateLimitError(
-                str(exc)
-            ) from exc
-
-        except OpenRouterTimeoutError as exc:
-            raise ProviderTimeoutError(
-                str(exc)
-            ) from exc
-
-        except OpenRouterUnavailableError as exc:
-            raise ProviderUnavailableError(
-                str(exc)
-            ) from exc
-
-        except OpenRouterClientError as exc:
-            raise ProviderExecutionError(
-                str(exc)
-            ) from exc
-
-    def stream(
-        self,
-        request: ProviderRequest,
-    ) -> Iterator[str]:
-
-        try:
-            yield from (
-                self.stream_client.generate(
-                    request
+        if not await self.supports_model(request.model):
+            if "/" not in request.model:
+                raise ValueError(
+                    f"Unsupported OpenRouter model: "
+                    f"{request.model}"
                 )
+
+        await self.ensure_initialized()
+
+        return await self.chat_client.complete(request)
+
+    async def stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncIterator[StreamChunk]:
+        if not self.openrouter_config.enabled:
+            raise RuntimeError(
+                "OpenRouter provider is disabled."
             )
 
-        except OpenRouterAuthenticationError as exc:
-            raise ProviderAuthenticationError(
-                str(exc)
-            ) from exc
+        if not self.openrouter_config.api_key:
+            raise RuntimeError(
+                "OPENROUTER_API_KEY is not configured."
+            )
 
-        except OpenRouterRateLimitError as exc:
-            raise ProviderRateLimitError(
-                str(exc)
-            ) from exc
+        await self.ensure_initialized()
 
-        except OpenRouterTimeoutError as exc:
-            raise ProviderTimeoutError(
-                str(exc)
-            ) from exc
+        from .utils import request_to_payload
 
-        except OpenRouterUnavailableError as exc:
-            raise ProviderUnavailableError(
-                str(exc)
-            ) from exc
+        payload = request_to_payload(request)
+        payload["stream"] = True
 
-        except OpenRouterClientError as exc:
-            raise ProviderExecutionError(
-                str(exc)
-            ) from exc
+        parser = OpenRouterStreamParser(
+            request.model,
+            str(request.request_id),
+        )
 
-    def health_check(self):
-        return self.client.health_check()
-'@ | Set-Content .\ai\providers\llm\openrouter\provider.py
+        async for line in self.client.stream(payload):
+            chunk = parser.parse_line(line)
+
+            if chunk is not None:
+                yield chunk
+
+                if chunk.done:
+                    break

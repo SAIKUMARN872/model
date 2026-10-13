@@ -41,7 +41,7 @@ class ModelCandidate:
     quality: float = 0.0
     input_cost: float = 0.0
     output_cost: float = 0.0
-    estimated_latency_ms: float = 0.0
+    estimated_latency_ms: float | None = None
 
     capabilities: tuple[str, ...] = ()
 
@@ -71,3 +71,4 @@ __all__ = [
     "ModelCandidate",
     "RoutingDecision",
 ]
+

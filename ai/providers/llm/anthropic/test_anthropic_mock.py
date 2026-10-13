@@ -2,9 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from providers.llm.anthropic.chat import AnthropicChat
-from providers.base.request import ChatMessage, ChatRequest
-from providers.base.response import ChatResponse
+from ai.providers.llm.anthropic.chat import AnthropicChat
+from ai.providers.base.request import ChatMessage, ChatRequest
+from ai.providers.base.response import ChatResponse
 
 
 class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
@@ -47,54 +47,46 @@ class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
             max_tokens=256,
         )
 
+        print(f"REQUEST MODEL: {request.model}")
+        print(
+            "REQUEST MESSAGES:",
+            [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                }
+                for message in request.messages
+            ],
+        )
+        print(f"REQUEST MAX TOKENS: {request.max_tokens}")
+
         response = await chat.chat(request)
 
         self.assertIsInstance(response, ChatResponse)
 
-        self.assertEqual(
-            response.provider,
-            "anthropic",
-        )
-
-        self.assertEqual(
-            response.model,
-            "claude-sonnet-5",
-        )
-
+        self.assertEqual(response.provider, "anthropic")
+        self.assertEqual(response.model, "claude-sonnet-5")
         self.assertEqual(
             response.content,
             "ModelNow is an enterprise AI orchestration platform.",
         )
+        self.assertEqual(response.finish_reason, "end_turn")
+        self.assertEqual(response.request_id, "msg_mock_anthropic_001")
+        self.assertEqual(response.usage.input_tokens, 120)
+        self.assertEqual(response.usage.output_tokens, 45)
+        self.assertEqual(response.usage.total_tokens, 165)
 
-        self.assertEqual(
-            response.finish_reason,
-            "end_turn",
-        )
+        self.assertGreaterEqual(response.latency_ms, 0.0)
 
-        self.assertEqual(
-            response.request_id,
-            "msg_mock_anthropic_001",
-        )
-
-        self.assertEqual(
-            response.usage.input_tokens,
-            120,
-        )
-
-        self.assertEqual(
-            response.usage.output_tokens,
-            45,
-        )
-
-        self.assertEqual(
-            response.usage.total_tokens,
-            165,
-        )
-
-        self.assertGreaterEqual(
-            response.latency_ms,
-            0.0,
-        )
+        print(f"RESPONSE TYPE: {type(response).__name__}")
+        print(f"PROVIDER: {response.provider}")
+        print(f"MODEL: {response.model}")
+        print(f"CONTENT: {response.content}")
+        print(f"INPUT TOKENS: {response.usage.input_tokens}")
+        print(f"OUTPUT TOKENS: {response.usage.output_tokens}")
+        print(f"TOTAL TOKENS: {response.usage.total_tokens}")
+        print(f"FINISH REASON: {response.finish_reason}")
+        print(f"REQUEST ID: {response.request_id}")
 
         mock_client.request.assert_awaited_once()
 
@@ -115,13 +107,9 @@ class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        mock_request = AsyncMock(
-            return_value=mock_response
-        )
+        mock_request = AsyncMock(return_value=mock_response)
 
-        mock_client = SimpleNamespace(
-            request=mock_request
-        )
+        mock_client = SimpleNamespace(request=mock_request)
 
         chat = AnthropicChat(mock_client)
 
@@ -150,32 +138,14 @@ class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
 
         call = mock_request.await_args
 
-        self.assertEqual(
-            call.kwargs["method"],
-            "POST",
-        )
-
-        self.assertEqual(
-            call.kwargs["path"],
-            "/messages",
-        )
+        self.assertEqual(call.kwargs["method"], "POST")
+        self.assertEqual(call.kwargs["path"], "/messages")
 
         payload = call.kwargs["json"]
 
-        self.assertEqual(
-            payload["model"],
-            "claude-sonnet-5",
-        )
-
-        self.assertEqual(
-            payload["max_tokens"],
-            512,
-        )
-
-        self.assertEqual(
-            payload["system"],
-            "System instruction.",
-        )
+        self.assertEqual(payload["model"], "claude-sonnet-5")
+        self.assertEqual(payload["max_tokens"], 512)
+        self.assertEqual(payload["system"], "System instruction.")
 
         self.assertEqual(
             payload["messages"],
@@ -226,22 +196,12 @@ class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
 
         response = await chat.chat(request)
 
-        self.assertEqual(
-            response.content,
-            "Fast response.",
-        )
+        self.assertEqual(response.content, "Fast response.")
 
         payload = mock_client.request.await_args.kwargs["json"]
 
-        self.assertNotIn(
-            "system",
-            payload,
-        )
-
-        self.assertEqual(
-            payload["max_tokens"],
-            4096,
-        )
+        self.assertNotIn("system", payload)
+        self.assertEqual(payload["max_tokens"], 4096)
 
     async def test_mock_chat_tool_call(self):
         mock_response = SimpleNamespace(
@@ -286,31 +246,21 @@ class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
 
         response = await chat.chat(request)
 
-        self.assertEqual(
-            response.finish_reason,
-            "tool_use",
-        )
-
+        self.assertEqual(response.finish_reason, "tool_use")
         self.assertEqual(
             response.content,
             "I will use the requested tool.",
         )
-
-        self.assertEqual(
-            len(response.tool_calls),
-            1,
-        )
+        self.assertEqual(len(response.tool_calls), 1)
 
         self.assertEqual(
             response.tool_calls[0]["id"],
             "toolu_mock_001",
         )
-
         self.assertEqual(
             response.tool_calls[0]["name"],
             "browser_search",
         )
-
         self.assertEqual(
             response.tool_calls[0]["input"],
             {
@@ -353,14 +303,10 @@ class TestAnthropicMockChat(unittest.IsolatedAsyncioTestCase):
 
         response = await chat.chat(request)
 
-        self.assertEqual(
-            response.content,
-            "Mock only.",
-        )
+        self.assertEqual(response.content, "Mock only.")
 
         mock_client.request.assert_awaited_once()
 
 
 if __name__ == "__main__":
     unittest.main()
-

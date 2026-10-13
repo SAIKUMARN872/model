@@ -1,16 +1,16 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import unittest
 
-from providers.base.config import ProviderConfig
-from providers.llm.openai.config import OpenAIConfig
-from providers.llm.openai.client import OpenAIClient
-from providers.llm.openai.chat import OpenAIChat
-from providers.llm.openai.models import OpenAIModel
-from providers.llm.openai.provider import OpenAIProvider
-from providers.llm.openai.stream import OpenAIStream
-from providers.llm.openai.tokenizer import OpenAITokenizer
-from providers.llm.openai.utils import (
+from ai.providers.base.config import ProviderConfig
+from ai.providers.llm.openai.config import OpenAIConfig
+from ai.providers.llm.openai.client import OpenAIClient
+from ai.providers.llm.openai.chat import OpenAIChat
+from ai.providers.llm.openai.models import OpenAIModel
+from ai.providers.llm.openai.provider import OpenAIProvider
+from ai.providers.llm.openai.stream import OpenAIStream
+from ai.providers.llm.openai.tokenizer import OpenAITokenizer
+from ai.providers.llm.openai.utils import (
     normalize_model_name,
     normalize_messages,
     build_chat_payload,
@@ -381,4 +381,5 @@ class TestOpenAITokenizer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
 

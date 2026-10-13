@@ -1,4 +1,3 @@
-@'
 from __future__ import annotations
 
 from typing import Any
@@ -112,4 +111,4 @@ class ProviderResponseError(ProviderError):
 class ProviderCircuitOpenError(ProviderError):
     code = "provider_circuit_open"
     retryable = True
-'@ | Set-Content -Path ".\ai\providers\base\exceptions.py" -Encoding UTF8
+

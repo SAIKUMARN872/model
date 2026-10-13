@@ -1,0 +1,4 @@
+﻿DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_BATCH_SIZE = 32
+MAX_BATCH_SIZE = 512
+DEFAULT_NORMALIZE = True

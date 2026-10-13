@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from ai.routing_engine.classifier import RequestClassifier
 from ai.routing_engine.constants import RoutingObjective
@@ -9,6 +9,7 @@ from .rules import (
     capability_rule,
     cost_rule,
     latency_rule,
+    routing_weights,
     quality_rule,
     tier_rule,
 )
@@ -67,6 +68,11 @@ class PolicyRouter:
         request: RoutingRequest,
     ) -> PolicyDecision:
         profile = self.classifier.classify(request)
+
+        quality_weight, cost_weight, latency_weight = routing_weights(
+            profile,
+            request.objective,
+        )
 
         # ---------------------------------------------------------------
         # Explicit request constraints have highest priority.
@@ -181,6 +187,9 @@ class PolicyRouter:
             max_cost=max_cost,
             max_latency_ms=max_latency_ms,
             streaming_required=profile.streaming_required,
+            quality_weight=quality_weight,
+            cost_weight=cost_weight,
+            latency_weight=latency_weight,
             policies_applied=tuple(policies),
             reasons=tuple(reasons),
             metadata={
@@ -189,7 +198,12 @@ class PolicyRouter:
                 "task_type": profile.task_type.value,
                 "complexity": profile.complexity.value,
                 "reasoning_level": profile.reasoning_level.value,
+                "estimated_input_tokens": profile.estimated_input_tokens,
+                "explicit_max_cost": request.max_cost is not None,
                 "explicit_constraints_take_precedence": True,
+                "quality_weight": quality_weight,
+                "cost_weight": cost_weight,
+                "latency_weight": latency_weight,
                 "optimization_objective_preserved": (
                     request.objective.value
                 ),

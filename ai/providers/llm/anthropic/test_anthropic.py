@@ -1,15 +1,15 @@
 import unittest
 
-from providers.llm.anthropic.config import AnthropicConfig
-from providers.llm.anthropic.models import (
+from ai.providers.llm.anthropic.config import AnthropicConfig
+from ai.providers.llm.anthropic.models import (
     DEFAULT_ANTHROPIC_MODELS,
     AnthropicModel,
 )
-from providers.llm.anthropic.provider import AnthropicProvider
-from providers.llm.anthropic.chat import AnthropicChat
-from providers.llm.anthropic.stream import AnthropicStream
-from providers.llm.anthropic.tokenizer import AnthropicTokenizer
-from providers.llm.anthropic.utils import (
+from ai.providers.llm.anthropic.provider import AnthropicProvider
+from ai.providers.llm.anthropic.chat import AnthropicChat
+from ai.providers.llm.anthropic.stream import AnthropicStream
+from ai.providers.llm.anthropic.tokenizer import AnthropicTokenizer
+from ai.providers.llm.anthropic.utils import (
     calculate_cost,
     extract_finish_reason,
     extract_request_id,
@@ -20,8 +20,8 @@ from providers.llm.anthropic.utils import (
     serialize_json,
     is_retryable_status,
 )
-from providers.base.models import ModelCapability, ProviderTier
-from providers.base.request import ChatMessage
+from ai.providers.base.models import ModelCapability, ProviderTier
+from ai.providers.base.request import ChatMessage
 
 
 class TestAnthropicConfig(unittest.TestCase):
@@ -387,3 +387,4 @@ class TestAnthropicClasses(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

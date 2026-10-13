@@ -18,6 +18,9 @@ class RequestFeatures:
     has_analysis_keywords: bool
     has_tool_keywords: bool
     has_agentic_keywords: bool
+    has_debugging_keywords: bool
+    has_distributed_system_keywords: bool
+    has_architecture_keywords: bool
 
 
 def estimate_tokens(text: str) -> int:
@@ -137,6 +140,61 @@ def extract_features(text: str) -> RequestFeatures:
         "multi-step",
     )
 
+    debugging_keywords = (
+        "debug",
+        "debugging",
+        "race condition",
+        "deadlock",
+        "duplicate processing",
+        "consistency failure",
+        "consistency issue",
+        "concurrency",
+        "retry failure",
+        "retry loop",
+        "production incident",
+        "root cause",
+        "failure analysis",
+    )
+
+    distributed_system_keywords = (
+        "distributed",
+        "microservice",
+        "microservices",
+        "redis",
+        "postgresql",
+        "postgres",
+        "kafka",
+        "queue",
+        "message broker",
+        "event driven",
+        "event-driven",
+        "transaction",
+        "consistency",
+        "replication",
+        "partition",
+        "idempotency",
+        "duplicate processing",
+        "concurrency",
+        "race condition",
+    )
+
+    architecture_keywords = (
+        "architecture",
+        "architect",
+        "design a system",
+        "system design",
+        "distributed system",
+        "enterprise platform",
+        "scalable",
+        "high availability",
+        "fault tolerance",
+        "resilience",
+        "multi-agent",
+        "long-context",
+        "governance",
+        "observability",
+    )
+
     return RequestFeatures(
         text=text,
         text_length=len(text),
@@ -167,6 +225,16 @@ def extract_features(text: str) -> RequestFeatures:
         ),
         has_agentic_keywords=any(
             keyword in normalized for keyword in agentic_keywords
+        ),
+        has_debugging_keywords=any(
+            keyword in normalized for keyword in debugging_keywords
+        ),
+        has_distributed_system_keywords=any(
+            keyword in normalized
+            for keyword in distributed_system_keywords
+        ),
+        has_architecture_keywords=any(
+            keyword in normalized for keyword in architecture_keywords
         ),
     )
 

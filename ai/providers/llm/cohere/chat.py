@@ -1,98 +1,71 @@
-@'
-import time
+from __future__ import annotations
 
-from ai.providers.base.request import ProviderRequest
-from ai.providers.base.response import (
-    ProviderResponse,
-    ProviderUsage,
-)
+from ...base.request import ChatRequest
+from ...base.response import ChatResponse, ChatUsage
 
 from .client import CohereClient
 from .utils import (
     build_chat_payload,
     extract_citations,
+    extract_content,
     extract_finish_reason,
     extract_request_id,
-    extract_text,
     extract_tool_calls,
-    extract_tool_plan,
     extract_usage,
 )
 
 
 class CohereChat:
-    def __init__(
-        self,
-        client: CohereClient,
-    ):
+    """Cohere chat adapter for the ModelNow provider layer."""
+
+    def __init__(self, client: CohereClient) -> None:
         self.client = client
 
-    def generate(
+    async def create(
         self,
-        request: ProviderRequest,
-    ) -> ProviderResponse:
+        request: ChatRequest,
+    ) -> ChatResponse:
+        payload = build_chat_payload(request)
 
-        start = time.perf_counter()
-
-        payload = build_chat_payload(
-            model=request.model,
-            messages=request.messages,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            stream=False,
-            tools=request.tools,
-            metadata=request.metadata,
+        raw_response = self.client.chat(
+            payload
         )
 
-        data = self.client.chat(payload)
+        usage_data = extract_usage(raw_response)
 
-        usage_data = extract_usage(data)
-
-        usage = ProviderUsage(
-            input_tokens=usage_data[
-                "input_tokens"
+        usage = ChatUsage(
+            input_tokens=usage_data["input_tokens"],
+            output_tokens=usage_data["output_tokens"],
+            total_tokens=usage_data["total_tokens"],
+            estimated_cost=usage_data["estimated_cost"],
+            cached_input_tokens=usage_data[
+                "cached_input_tokens"
             ],
-            output_tokens=usage_data[
-                "output_tokens"
+            reasoning_tokens=usage_data[
+                "reasoning_tokens"
             ],
-            total_tokens=usage_data[
-                "total_tokens"
-            ],
-            estimated_cost=0.0,
+            metadata=usage_data["metadata"],
         )
 
-        return ProviderResponse(
+        return ChatResponse(
             provider="cohere",
-            model=data.get(
-                "model",
-                request.model,
-            ),
-            content=extract_text(data),
+            model=request.model,
+            content=extract_content(raw_response),
             usage=usage,
-            latency_ms=round(
-                (
-                    time.perf_counter()
-                    - start
-                ) * 1000,
-                2,
+            finish_reason=extract_finish_reason(
+                raw_response
             ),
-            finish_reason=(
-                extract_finish_reason(data)
+            request_id=extract_request_id(
+                raw_response
             ),
-            raw_response=data,
-            metadata={
-                "request_id": (
-                    extract_request_id(data)
-                ),
-                "tool_plan": (
-                    extract_tool_plan(data)
-                ),
-                "tool_calls": (
-                    extract_tool_calls(data)
-                ),
-                "citations": (
-                    extract_citations(data)
-                ),
-            },
+            tool_calls=extract_tool_calls(
+                raw_response
+            ),
+            citations=extract_citations(
+                raw_response
+            ),
+            raw_response=raw_response,
         )
-'@ | Set-Content .\ai\providers\llm\cohere\chat.py
+
+
+__all__ = ["CohereChat"]

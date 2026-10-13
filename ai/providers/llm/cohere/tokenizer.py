@@ -1,17 +1,18 @@
-@'
+from __future__ import annotations
+
+from typing import Any
+
+
 class CohereTokenizer:
     """
-    Lightweight local token estimate.
+    Local token estimator.
 
-    Authoritative token accounting should use
-    Cohere provider usage returned by the API.
+    This is intentionally approximate. Authoritative token counts
+    must come from Cohere's API usage response.
     """
 
     @staticmethod
-    def count_tokens(
-        text: str,
-    ) -> int:
-
+    def count_tokens(text: str) -> int:
         if not text:
             return 0
 
@@ -22,34 +23,27 @@ class CohereTokenizer:
 
     @staticmethod
     def count_messages(
-        messages,
+        messages: list[Any],
     ) -> int:
-
         total = 0
 
         for message in messages:
-            content = (
-                message.content
-                if hasattr(
-                    message,
-                    "content",
-                )
-                else message.get(
+            if hasattr(message, "content"):
+                content = message.content
+            elif isinstance(message, dict):
+                content = message.get(
                     "content",
                     "",
                 )
-            )
+            else:
+                content = ""
 
-            if isinstance(
-                content,
-                str,
-            ):
-                total += (
-                    CohereTokenizer
-                    .count_tokens(
-                        content
-                    )
+            if isinstance(content, str):
+                total += CohereTokenizer.count_tokens(
+                    content
                 )
 
         return total
-'@ | Set-Content .\ai\providers\llm\cohere\tokenizer.py
+
+
+__all__ = ["CohereTokenizer"]

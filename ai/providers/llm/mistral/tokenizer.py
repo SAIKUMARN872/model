@@ -1,32 +1,81 @@
-@'
+from __future__ import annotations
+
+from typing import Any, Iterable
+
+
 class MistralTokenizer:
     """
-    Lightweight tokenizer approximation.
+    Lightweight pre-request token estimator.
 
-    Production token accounting should prefer provider-reported
-    usage and a dedicated tokenizer implementation where available.
+    Exact token counts come from Mistral usage metadata.
     """
 
-    @staticmethod
-    def count_tokens(text: str) -> int:
+    def estimate_text(
+        self,
+        text: str,
+    ) -> int:
         if not text:
             return 0
 
-        return max(1, len(text) // 4)
+        return max(
+            1,
+            len(text) // 4,
+        )
 
-    @staticmethod
-    def count_messages(messages) -> int:
+    def estimate_content(
+        self,
+        content: Any,
+    ) -> int:
+        if content is None:
+            return 0
+
+        if isinstance(content, str):
+            return self.estimate_text(content)
+
+        if isinstance(content, list):
+            total = 0
+
+            for item in content:
+                if isinstance(item, str):
+                    total += self.estimate_text(item)
+
+                elif isinstance(item, dict):
+                    text = item.get("text")
+
+                    if isinstance(text, str):
+                        total += self.estimate_text(
+                            text
+                        )
+
+            return total
+
+        return self.estimate_text(
+            str(content)
+        )
+
+    def estimate_messages(
+        self,
+        messages: Iterable[Any],
+    ) -> int:
         total = 0
 
         for message in messages:
-            content = (
-                message.content
-                if hasattr(message, "content")
-                else message.get("content", "")
+            if hasattr(message, "content"):
+                content = message.content
+
+            elif isinstance(message, dict):
+                content = message.get(
+                    "content"
+                )
+
+            else:
+                content = str(message)
+
+            total += self.estimate_content(
+                content
             )
 
-            if isinstance(content, str):
-                total += MistralTokenizer.count_tokens(content)
-
         return total
-'@ | Set-Content .\ai\providers\llm\mistral\tokenizer.py
+
+
+__all__ = ["MistralTokenizer"]

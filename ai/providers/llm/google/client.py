@@ -1,88 +1,140 @@
-@'
 from __future__ import annotations
 
 import json
 import socket
 import urllib.error
+import urllib.parse
 import urllib.request
-from typing import Any, Dict, Generator, Optional
+from typing import Any
 
 from .config import GoogleConfig
 
 
 class GoogleClientError(Exception):
-    pass
+    """Base Google provider client error."""
 
 
 class GoogleAuthenticationError(GoogleClientError):
-    pass
+    """Raised when Google authentication fails."""
 
 
 class GoogleRateLimitError(GoogleClientError):
-    pass
-
-
-class GoogleTimeoutError(GoogleClientError):
-    pass
+    """Raised when Google rate limits the request."""
 
 
 class GoogleUnavailableError(GoogleClientError):
-    pass
+    """Raised when Google is temporarily unavailable."""
 
 
-class GoogleRequestError(GoogleClientError):
-    pass
+class GoogleTimeoutError(GoogleClientError):
+    """Raised when a Google request times out."""
 
 
 class GoogleClient:
+    """Low-level Google Gemini HTTP client for ModelNow."""
+
     def __init__(
         self,
         config: GoogleConfig,
-    ):
+    ) -> None:
         self.config = config
 
-    def _headers(self) -> Dict[str, str]:
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+    def _build_url(
+        self,
+        path: str,
+        *,
+        stream: bool = False,
+    ) -> str:
+        base_url = self.config.base_url.rstrip("/")
+        normalized_path = path.lstrip("/")
+
+        url = f"{base_url}/{normalized_path}"
 
         if self.config.api_key:
-            headers["x-goog-api-key"] = self.config.api_key
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}key={urllib.parse.quote(self.config.api_key)}"
 
-        return headers
+        if stream:
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}alt=sse"
+
+        return url
 
     def _request(
         self,
         method: str,
-        url: str,
-        payload: Optional[Dict[str, Any]] = None,
-    ):
-        if not self.config.api_key:
-            raise GoogleAuthenticationError(
-                "GEMINI_API_KEY is not configured."
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        stream: bool = False,
+    ) -> dict[str, Any] | str | list[Any]:
+        if not self.config.enabled:
+            raise GoogleClientError(
+                "Google provider is disabled."
             )
 
-        body = None
+        if not self.config.api_key:
+            raise GoogleAuthenticationError(
+                "GOOGLE_API_KEY or GEMINI_API_KEY is not configured."
+            )
 
-        if payload is not None:
-            body = json.dumps(
+        url = self._build_url(
+            path,
+            stream=stream,
+        )
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": (
+                "text/event-stream"
+                if stream
+                else "application/json"
+            ),
+            "User-Agent": self.config.client_name,
+        }
+
+        body = (
+            json.dumps(
                 payload,
                 ensure_ascii=False,
+                separators=(",", ":"),
             ).encode("utf-8")
+            if payload is not None
+            else None
+        )
 
         request = urllib.request.Request(
             url=url,
             data=body,
-            headers=self._headers(),
+            headers=headers,
             method=method,
         )
 
         try:
-            return urllib.request.urlopen(
+            with urllib.request.urlopen(
                 request,
-                timeout=self.config.timeout,
-            )
+                timeout=self.config.timeout_seconds,
+            ) as response:
+                raw = response.read().decode(
+                    "utf-8",
+                    errors="replace",
+                )
+
+                if not raw:
+                    return {}
+
+                if stream:
+                    return raw
+
+                decoded = json.loads(raw)
+
+                if isinstance(
+                    decoded,
+                    (dict, list),
+                ):
+                    return decoded
+
+                return {}
 
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode(
@@ -90,115 +142,144 @@ class GoogleClient:
                 errors="replace",
             )
 
-            message = raw
+            if exc.code in {400, 404}:
+                raise GoogleClientError(
+                    f"Google request failed: HTTP {exc.code}: {raw}"
+                ) from exc
 
-            try:
-                parsed = json.loads(raw)
-                error = parsed.get("error") or {}
-                message = error.get(
-                    "message",
-                    parsed.get("message", raw),
-                )
-            except json.JSONDecodeError:
-                pass
-
-            if exc.code in {400, 401, 403}:
+            if exc.code in {401, 403}:
                 raise GoogleAuthenticationError(
-                    message
+                    f"Google authentication failed: "
+                    f"HTTP {exc.code}: {raw}"
                 ) from exc
 
             if exc.code == 429:
                 raise GoogleRateLimitError(
-                    message
+                    f"Google rate limit: HTTP 429: {raw}"
                 ) from exc
 
-            if exc.code in {500, 502, 503, 504}:
+            if exc.code in {408, 409} or exc.code >= 500:
                 raise GoogleUnavailableError(
-                    message
+                    f"Google unavailable: "
+                    f"HTTP {exc.code}: {raw}"
                 ) from exc
 
-            raise GoogleRequestError(
-                f"Google HTTP {exc.code}: {message}"
-            ) from exc
-
-        except (TimeoutError, socket.timeout) as exc:
-            raise GoogleTimeoutError(
-                "Google Gemini request timed out."
+            raise GoogleClientError(
+                f"Google request failed: "
+                f"HTTP {exc.code}: {raw}"
             ) from exc
 
         except urllib.error.URLError as exc:
+            reason = getattr(
+                exc,
+                "reason",
+                exc,
+            )
+
+            if isinstance(
+                reason,
+                (
+                    TimeoutError,
+                    socket.timeout,
+                ),
+            ):
+                raise GoogleTimeoutError(
+                    "Google request timed out."
+                ) from exc
+
             raise GoogleUnavailableError(
-                f"Google connection failed: {exc.reason}"
+                f"Google connection failed: {reason}"
             ) from exc
 
-    def generate(
-        self,
-        model: str,
-        payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        response = self._request(
-            "POST",
-            self.config.generate_url(model),
-            payload,
-        )
-
-        raw = response.read().decode(
-            "utf-8",
-            errors="replace",
-        )
-
-        try:
-            return json.loads(raw)
+        except (
+            TimeoutError,
+            socket.timeout,
+        ) as exc:
+            raise GoogleTimeoutError(
+                "Google request timed out."
+            ) from exc
 
         except json.JSONDecodeError as exc:
-            raise GoogleRequestError(
+            raise GoogleClientError(
                 "Google returned invalid JSON."
             ) from exc
 
-    def stream(
+    def generate_content(
         self,
         model: str,
-        payload: Dict[str, Any],
-    ) -> Generator[Dict[str, Any], None, None]:
-        response = self._request(
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = self._request(
             "POST",
-            self.config.stream_url(model),
+            f"/v1beta/models/{model}:generateContent",
             payload,
         )
 
-        for raw_line in response:
-            line = raw_line.decode(
-                "utf-8",
-                errors="replace",
-            ).strip()
+        if isinstance(result, dict):
+            return result
 
-            if not line:
-                continue
+        if isinstance(result, str):
+            decoded = json.loads(result)
 
-            if line.startswith("data:"):
-                line = line[5:].strip()
+            if isinstance(decoded, dict):
+                return decoded
 
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        raise GoogleClientError(
+            "Google generateContent returned an invalid response."
+        )
 
-            yield event
+    def stream_generate_content(
+        self,
+        model: str,
+        payload: dict[str, Any],
+    ) -> str:
+        result = self._request(
+            "POST",
+            f"/v1beta/models/{model}:streamGenerateContent",
+            payload,
+            stream=True,
+        )
+
+        if isinstance(result, str):
+            return result
+
+        return json.dumps(
+            result,
+            ensure_ascii=False,
+        )
+
+    def list_models(self) -> dict[str, Any]:
+        result = self._request(
+            "GET",
+            "/v1beta/models",
+        )
+
+        if isinstance(result, dict):
+            return result
+
+        if isinstance(result, str):
+            decoded = json.loads(result)
+
+            if isinstance(decoded, dict):
+                return decoded
+
+        raise GoogleClientError(
+            "Google model discovery returned an invalid response."
+        )
 
     def health_check(self) -> bool:
-        if not self.config.api_key:
-            return False
-
         try:
-            response = self._request(
-                "GET",
-                self.config.models_url,
-            )
-
-            response.read()
-
-            return True
-
+            result = self.list_models()
+            return isinstance(result, dict)
         except GoogleClientError:
             return False
-'@ | Set-Content ".\ai\providers\llm\google\client.py" -Encoding UTF8
+
+
+__all__ = [
+    "GoogleAuthenticationError",
+    "GoogleClient",
+    "GoogleClientError",
+    "GoogleRateLimitError",
+    "GoogleTimeoutError",
+    "GoogleUnavailableError",
+]

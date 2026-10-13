@@ -1,9 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+from decimal import Decimal
 from typing import Optional
 
+from ai.model_registry.engine import ModelRegistryEngine
+
 from .interfaces import PricingProvider
-from .model_pricing.models import PricingEntry
 from .model_pricing.pricing import PricingService
 from .models import ModelPricing
 
@@ -37,4 +39,47 @@ class ModelPricingProvider(PricingProvider):
         )
 
 
-__all__ = ["ModelPricingProvider"]
+class ModelRegistryPricingProvider(PricingProvider):
+    """Read canonical model pricing directly from the Model Registry."""
+
+    def __init__(
+        self,
+        registry: ModelRegistryEngine,
+    ) -> None:
+        self.registry = registry
+
+    def get_pricing(
+        self,
+        model: str,
+        provider: str,
+    ) -> Optional[ModelPricing]:
+        record = self.registry.get(
+            provider=provider,
+            model_id=model,
+        )
+
+        if record is None:
+            return None
+
+        pricing = record.pricing
+
+        return ModelPricing(
+            model=record.model_id,
+            provider=record.provider,
+            input_cost_per_1k_tokens=(
+                Decimal(str(pricing.input_per_1m_tokens))
+                / Decimal("1000")
+            ),
+            output_cost_per_1k_tokens=(
+                Decimal(str(pricing.output_per_1m_tokens))
+                / Decimal("1000")
+            ),
+            currency=pricing.currency,
+            pricing_version=record.version or "1.0",
+        )
+
+
+__all__ = [
+    "ModelPricingProvider",
+    "ModelRegistryPricingProvider",
+]

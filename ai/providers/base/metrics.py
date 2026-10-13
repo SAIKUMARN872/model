@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import Lock
@@ -190,4 +189,3 @@ class MetricsCollector:
 
             self._total_cost = 0.0
             self._total_latency_ms = 0.0
-'@ | Set-Content -Path ".\ai\providers\base\metrics.py" -Encoding UTF8

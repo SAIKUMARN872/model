@@ -123,6 +123,60 @@ async def main() -> None:
 
     assert balanced_decision.model_id == "cheap-slm"
 
+    assert balanced_decision.metadata["quality_weight"] == 0.50
+    assert balanced_decision.metadata["cost_weight"] == 0.25
+    assert balanced_decision.metadata["latency_weight"] == 0.25
+
+    quality_heavy_request = RoutingRequest(
+        messages=[
+            {
+                "role": "user",
+                "content": "Choose the highest quality model.",
+            }
+        ],
+        objective=RoutingObjective.BALANCED,
+        metadata={
+            "policy_quality_weight": 0.90,
+            "policy_cost_weight": 0.05,
+            "policy_latency_weight": 0.05,
+        },
+    )
+
+    quality_heavy_decision = await selector.select(
+        quality_heavy_request,
+        candidates,
+    )
+
+    assert quality_heavy_decision.model_id == "quality-slm"
+    assert quality_heavy_decision.metadata["quality_weight"] == 0.90
+    assert quality_heavy_decision.metadata["cost_weight"] == 0.05
+    assert quality_heavy_decision.metadata["latency_weight"] == 0.05
+
+    cost_latency_heavy_request = RoutingRequest(
+        messages=[
+            {
+                "role": "user",
+                "content": "Choose a cheap and fast model.",
+            }
+        ],
+        objective=RoutingObjective.BALANCED,
+        metadata={
+            "policy_quality_weight": 0.10,
+            "policy_cost_weight": 0.45,
+            "policy_latency_weight": 0.45,
+        },
+    )
+
+    cost_latency_heavy_decision = await selector.select(
+        cost_latency_heavy_request,
+        candidates,
+    )
+
+    assert cost_latency_heavy_decision.model_id == "cheap-slm"
+    assert cost_latency_heavy_decision.metadata["quality_weight"] == 0.10
+    assert cost_latency_heavy_decision.metadata["cost_weight"] == 0.45
+    assert cost_latency_heavy_decision.metadata["latency_weight"] == 0.45
+
     ranked = rank_candidates(
         candidates,
         RoutingObjective.QUALITY,
@@ -148,10 +202,12 @@ async def main() -> None:
     print(f"COST: {cost_decision.model_id}")
     print(f"LATENCY: {latency_decision.model_id}")
     print(f"BALANCED: {balanced_decision.model_id}")
+    print(f"QUALITY-HEAVY: {quality_heavy_decision.model_id}")
+    print(f"COST/LATENCY-HEAVY: {cost_latency_heavy_decision.model_id}")
+    print("DYNAMIC WEIGHTS: PASS")
     print("RANKING: PASS")
     print("EMPTY CANDIDATES: PASS")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-

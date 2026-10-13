@@ -1,108 +1,249 @@
-@'
-from typing import Iterator
+from __future__ import annotations
 
-from ai.providers.base.provider import BaseProvider
-from ai.providers.base.request import ProviderRequest
-from ai.providers.base.response import ProviderResponse
-from ai.providers.exceptions import (
-    ProviderAuthenticationError,
-    ProviderExecutionError,
-    ProviderRateLimitError,
-    ProviderTimeoutError,
-    ProviderUnavailableError,
+import time
+from collections.abc import AsyncIterator
+
+from ...base.config import ProviderConfig
+from ...base.models import (
+    ModelCapability,
+    ModelInfo,
+    ProviderHealth,
+    ProviderMetadata,
+    ProviderStatus,
+    ProviderTier,
+)
+from ...base.provider import BaseProvider
+from ...base.request import ChatRequest
+from ...base.response import (
+    ChatResponse,
+    StreamChunk,
 )
 
 from .chat import MistralChat
-from .client import (
-    MistralAuthenticationError,
-    MistralClient,
-    MistralClientError,
-    MistralRateLimitError,
-    MistralTimeoutError,
-    MistralUnavailableError,
-)
+from .client import MistralClient
 from .config import MistralConfig
+from .models import MISTRAL_MODELS
 from .stream import MistralStream
 
 
 class MistralProvider(BaseProvider):
-    provider_id = "mistral"
+    """ModelNow provider adapter for Mistral."""
+
+    name = "mistral"
+    version = "1.0"
 
     def __init__(
         self,
         config: MistralConfig | None = None,
-    ):
-        self.config = config or MistralConfig.from_env()
-        self.client = MistralClient(self.config)
-        self.chat = MistralChat(self.client)
-        self.stream_client = MistralStream(self.client)
+    ) -> None:
+        mistral_config = (
+            config
+            or MistralConfig.from_env()
+        )
 
-    def generate(
+        super().__init__(
+            _to_base_config(
+                mistral_config
+            )
+        )
+
+        self.mistral_config = mistral_config
+
+        self.client = MistralClient(
+            mistral_config
+        )
+
+        self.chat_adapter = MistralChat(
+            self.client
+        )
+
+        self.stream_adapter = MistralStream(
+            self.client
+        )
+
+    @property
+    def metadata(
         self,
-        request: ProviderRequest,
-    ) -> ProviderResponse:
+    ) -> ProviderMetadata:
+        return ProviderMetadata(
+            provider_id="mistral",
+            display_name="Mistral",
+            version=self.version,
+            tier_support=frozenset(
+                {ProviderTier.LLM}
+            ),
+            capabilities=frozenset(
+                {
+                    ModelCapability.CHAT,
+                    ModelCapability.CODE,
+                    ModelCapability.VISION,
+                    ModelCapability.STREAMING,
+                    ModelCapability.TOOL_USE,
+                    ModelCapability.STRUCTURED_OUTPUT,
+                    ModelCapability.LONG_CONTEXT,
+                }
+            ),
+            enterprise_ready=True,
+            streaming_supported=True,
+            tool_use_supported=True,
+        )
 
-        try:
-            return self.chat.generate(request)
-
-        except MistralAuthenticationError as exc:
-            raise ProviderAuthenticationError(
-                str(exc)
-            ) from exc
-
-        except MistralRateLimitError as exc:
-            raise ProviderRateLimitError(
-                str(exc)
-            ) from exc
-
-        except MistralTimeoutError as exc:
-            raise ProviderTimeoutError(
-                str(exc)
-            ) from exc
-
-        except MistralUnavailableError as exc:
-            raise ProviderUnavailableError(
-                str(exc)
-            ) from exc
-
-        except MistralClientError as exc:
-            raise ProviderExecutionError(
-                str(exc)
-            ) from exc
-
-    def stream(
+    async def initialize(
         self,
-        request: ProviderRequest,
-    ) -> Iterator[str]:
+    ) -> None:
+        self.ensure_enabled()
+        self._initialized = True
 
-        try:
-            yield from self.stream_client.generate(request)
+    async def close(
+        self,
+    ) -> None:
+        self._initialized = False
 
-        except MistralAuthenticationError as exc:
-            raise ProviderAuthenticationError(
-                str(exc)
-            ) from exc
+    async def health_check(
+        self,
+    ) -> ProviderHealth:
+        if not self.mistral_config.enabled:
+            return ProviderHealth(
+                healthy=False,
+                provider="mistral",
+                status=ProviderStatus.DISABLED,
+                message=(
+                    "Mistral provider is disabled."
+                ),
+                checked_at=time.time(),
+            )
 
-        except MistralRateLimitError as exc:
-            raise ProviderRateLimitError(
-                str(exc)
-            ) from exc
+        if not self.mistral_config.api_key:
+            return ProviderHealth(
+                healthy=False,
+                provider="mistral",
+                status=ProviderStatus.UNAVAILABLE,
+                message=(
+                    "MISTRAL_API_KEY is not configured."
+                ),
+                checked_at=time.time(),
+            )
 
-        except MistralTimeoutError as exc:
-            raise ProviderTimeoutError(
-                str(exc)
-            ) from exc
+        return ProviderHealth(
+            healthy=True,
+            provider="mistral",
+            status=ProviderStatus.READY,
+            message=(
+                "Mistral configuration is available."
+            ),
+            checked_at=time.time(),
+        )
 
-        except MistralUnavailableError as exc:
-            raise ProviderUnavailableError(
-                str(exc)
-            ) from exc
+    async def list_models(
+        self,
+    ) -> list[ModelInfo]:
+        models: list[ModelInfo] = []
 
-        except MistralClientError as exc:
-            raise ProviderExecutionError(
-                str(exc)
-            ) from exc
+        for model in MISTRAL_MODELS.values():
+            capabilities = {
+                ModelCapability.CHAT
+            }
 
-    def health_check(self):
-        return self.client.health_check()
-'@ | Set-Content .\ai\providers\llm\mistral\provider.py
+            if model.supports_streaming:
+                capabilities.add(
+                    ModelCapability.STREAMING
+                )
+
+            if model.supports_tools:
+                capabilities.add(
+                    ModelCapability.TOOL_USE
+                )
+
+            if model.supports_reasoning:
+                capabilities.add(
+                    ModelCapability.REASONING
+                )
+
+            if model.supports_vision:
+                capabilities.add(
+                    ModelCapability.VISION
+                )
+
+            if model.supports_structured_output:
+                capabilities.add(
+                    ModelCapability.STRUCTURED_OUTPUT
+                )
+
+            models.append(
+                ModelInfo(
+                    id=model.model_id,
+                    provider="mistral",
+                    aliases=(
+                        model.display_name,
+                    ),
+                    tier=ProviderTier.LLM,
+                    capabilities=frozenset(
+                        capabilities
+                    ),
+                    context_window=(
+                        model.context_window
+                    ),
+                    max_output_tokens=(
+                        model.max_output_tokens
+                    ),
+                    estimated_latency_ms=None,
+                    quality_score=None,
+                    enabled=True,
+                    metadata={
+                        "display_name": (
+                            model.display_name
+                        ),
+                        "supports_streaming": (
+                            model.supports_streaming
+                        ),
+                        "supports_tools": (
+                            model.supports_tools
+                        ),
+                        "supports_reasoning": (
+                            model.supports_reasoning
+                        ),
+                        "supports_vision": (
+                            model.supports_vision
+                        ),
+                    },
+                )
+            )
+
+        return models
+
+    async def chat(
+        self,
+        request: ChatRequest,
+    ) -> ChatResponse:
+        self.ensure_initialized()
+
+        return await self.chat_adapter.create(
+            request
+        )
+
+    async def stream(
+        self,
+        request: ChatRequest,
+    ) -> AsyncIterator[StreamChunk]:
+        self.ensure_initialized()
+
+        async for chunk in self.stream_adapter.stream(
+            request
+        ):
+            yield chunk
+
+
+def _to_base_config(
+    config: MistralConfig,
+) -> ProviderConfig:
+    return ProviderConfig(
+        provider_id=config.provider_id,
+        api_key=config.api_key,
+        base_url=config.base_url,
+        timeout_seconds=config.timeout_seconds,
+        max_retries=config.max_retries,
+        enabled=config.enabled,
+    )
+
+
+__all__ = ["MistralProvider"]
