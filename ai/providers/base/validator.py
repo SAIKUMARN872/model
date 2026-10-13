@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
@@ -323,4 +322,3 @@ class RequestValidator:
 __all__ = [
     "RequestValidator",
 ]
-'@ | Set-Content ".\ai\providers\base\validator.py" -Encoding UTF8

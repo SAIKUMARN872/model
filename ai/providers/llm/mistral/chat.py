@@ -1,68 +1,69 @@
-@'
-import time
+from __future__ import annotations
 
-from ai.providers.base.request import ProviderRequest
-from ai.providers.base.response import ProviderResponse, ProviderUsage
+from ...base.request import ChatRequest
+from ...base.response import ChatResponse, ChatUsage
 
 from .client import MistralClient
 from .utils import (
     build_chat_payload,
+    extract_content,
     extract_finish_reason,
-    extract_reasoning,
     extract_request_id,
-    extract_text,
+    extract_tool_calls,
     extract_usage,
 )
 
 
 class MistralChat:
-    def __init__(self, client: MistralClient):
+    """Mistral chat adapter for ModelNow."""
+
+    def __init__(self, client: MistralClient) -> None:
         self.client = client
 
-    def generate(
+    async def create(
         self,
-        request: ProviderRequest,
-    ) -> ProviderResponse:
+        request: ChatRequest,
+    ) -> ChatResponse:
+        payload = build_chat_payload(request)
 
-        start = time.perf_counter()
-
-        payload = build_chat_payload(
-            model=request.model,
-            messages=request.messages,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            stream=False,
-            tools=request.tools,
-            metadata=request.metadata,
+        raw_response = self.client.chat_completions(
+            payload
         )
 
-        data = self.client.chat(payload)
+        usage_data = extract_usage(
+            raw_response
+        )
 
-        usage_data = extract_usage(data)
-
-        usage = ProviderUsage(
+        usage = ChatUsage(
             input_tokens=usage_data["input_tokens"],
             output_tokens=usage_data["output_tokens"],
             total_tokens=usage_data["total_tokens"],
-            estimated_cost=0.0,
+            estimated_cost=usage_data["estimated_cost"],
+            cached_input_tokens=usage_data[
+                "cached_input_tokens"
+            ],
+            reasoning_tokens=usage_data[
+                "reasoning_tokens"
+            ],
+            metadata=usage_data["metadata"],
         )
 
-        metadata = {
-            "request_id": extract_request_id(data),
-            "reasoning": extract_reasoning(data),
-        }
-
-        return ProviderResponse(
+        return ChatResponse(
             provider="mistral",
-            model=data.get("model", request.model),
-            content=extract_text(data),
+            model=request.model,
+            content=extract_content(raw_response),
             usage=usage,
-            latency_ms=round(
-                (time.perf_counter() - start) * 1000,
-                2,
+            finish_reason=extract_finish_reason(
+                raw_response
             ),
-            finish_reason=extract_finish_reason(data),
-            raw_response=data,
-            metadata=metadata,
+            request_id=extract_request_id(
+                raw_response
+            ),
+            tool_calls=extract_tool_calls(
+                raw_response
+            ),
+            raw_response=raw_response,
         )
-'@ | Set-Content .\ai\providers\llm\mistral\chat.py
+
+
+__all__ = ["MistralChat"]

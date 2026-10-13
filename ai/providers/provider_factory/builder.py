@@ -1,39 +1,39 @@
-cd "C:\Users\pamar\Downloads\model-main\model-main"
+﻿from __future__ import annotations
 
-@'
-from __future__ import annotations
-
-from typing import Any, Dict, Type
+from typing import Any, Type
 
 from ..base.provider import BaseProvider
-from ..models import ProviderMetadata
 
 
 class ProviderBuilder:
     """
-    Builds provider instances from registered provider classes.
+    Builds concrete ModelNow provider instances.
 
-    The builder does not perform provider discovery or routing.
+    Provider-specific configuration is supplied through kwargs.
+    The builder does not perform routing or inference.
     """
 
     def __init__(self) -> None:
-        self._classes: Dict[str, Type[BaseProvider]] = {}
+        self._classes: dict[str, Type[BaseProvider]] = {}
 
     def register_class(
         self,
         provider_id: str,
         provider_class: Type[BaseProvider],
     ) -> None:
+        provider_id = provider_id.strip().lower()
 
         if not provider_id:
             raise ValueError(
                 "provider_id cannot be empty."
             )
 
-        if not issubclass(
-            provider_class,
-            BaseProvider,
-        ):
+        if not isinstance(provider_class, type):
+            raise TypeError(
+                "provider_class must be a class."
+            )
+
+        if not issubclass(provider_class, BaseProvider):
             raise TypeError(
                 f"{provider_class.__name__} must "
                 "inherit from BaseProvider."
@@ -43,31 +43,33 @@ class ProviderBuilder:
 
     def build(
         self,
-        metadata: ProviderMetadata,
+        provider_id: str,
         **kwargs: Any,
     ) -> BaseProvider:
+        provider_id = provider_id.strip().lower()
 
-        provider_class = self._classes.get(
-            metadata.provider_id
-        )
+        provider_class = self._classes.get(provider_id)
 
         if provider_class is None:
             raise ValueError(
                 f"No provider implementation registered "
-                f"for '{metadata.provider_id}'."
+                f"for '{provider_id}'."
             )
 
-        return provider_class(
-            metadata=metadata,
-            **kwargs,
-        )
+        return provider_class(**kwargs)
 
     def exists(
         self,
         provider_id: str,
     ) -> bool:
-        return provider_id in self._classes
+        return provider_id.strip().lower() in self._classes
 
-    def all(self) -> Dict[str, Type[BaseProvider]]:
+    def all(
+        self,
+    ) -> dict[str, Type[BaseProvider]]:
         return dict(self._classes)
-'@ | Set-Content ".\ai\providers\provider_factory\builder.py" -Encoding UTF8
+
+
+__all__ = [
+    "ProviderBuilder",
+]

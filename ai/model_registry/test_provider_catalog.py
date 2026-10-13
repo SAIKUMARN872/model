@@ -1,17 +1,17 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from providers.base.models import (
+from ai.providers.base.models import (
     ModelCapability,
     ModelInfo,
     ProviderTier,
 )
 
-from model_registry.catalog.catalog import ModelCatalog
-from model_registry.models import ModelTier
-from model_registry.registry.manager import ModelRegistryManager
-from model_registry.utils import model_info_to_record
+from ai.model_registry.catalog.catalog import ModelCatalog
+from ai.model_registry.models import ModelTier
+from ai.model_registry.registry.manager import ModelRegistryManager
+from ai.model_registry.utils import model_info_to_record
 
 
 class TestProviderToCatalog(unittest.TestCase):
@@ -102,7 +102,7 @@ class TestProviderToCatalog(unittest.TestCase):
         self.assertTrue(model.capabilities.streaming)
 
     def test_catalog_filter_uses_normalized_capabilities(self):
-        from model_registry.schemas import ModelQuery
+        from ai.model_registry.schemas import ModelQuery
 
         result = self.catalog.filter(
             ModelQuery(
@@ -146,3 +146,5 @@ class TestProviderToCatalog(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import uuid
 from typing import Any
@@ -64,8 +64,35 @@ def validate_screen_size(width: int, height: int) -> None:
 
 
 def safe_action_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in parameters.items()
-        if not key.lower().endswith(("password", "secret", "token"))
+    """Return a recursively redacted copy suitable for logs and approval prompts."""
+    sensitive_names = {
+        "password", "passwd", "secret", "token", "access_token",
+        "refresh_token", "api_key", "apikey", "access_key",
+        "client_secret", "authorization", "cookie", "credential",
+        "credentials",
     }
+
+    def is_sensitive(key: str) -> bool:
+        normalized = key.lower().replace("-", "_").replace(" ", "_")
+        return (
+            normalized in sensitive_names
+            or normalized.endswith(("_password", "_passwd", "_secret", "_token",
+                                    "_api_key", "_apikey", "_access_key",
+                                    "_client_secret", "_authorization",
+                                    "_cookie", "_credential", "_credentials"))
+        )
+
+    def redact(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: "[REDACTED]" if isinstance(key, str) and is_sensitive(key)
+                else redact(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [redact(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(redact(item) for item in value)
+        return value
+
+    return redact(parameters)

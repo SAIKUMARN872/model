@@ -1,6 +1,6 @@
-@'
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict
 
 
 @dataclass(frozen=True)
@@ -12,62 +12,55 @@ class MistralModelInfo:
     max_output_tokens: int
     supports_streaming: bool = True
     supports_tools: bool = True
-    supports_json: bool = True
     supports_reasoning: bool = False
     supports_vision: bool = False
+    supports_structured_output: bool = True
 
 
-MISTRAL_MODELS: Dict[str, MistralModelInfo] = {
+MISTRAL_MODELS: dict[str, MistralModelInfo] = {
     "mistral-large-latest": MistralModelInfo(
         model_id="mistral-large-latest",
-        display_name="Mistral Large 3",
+        display_name="Mistral Large",
         tier="llm",
-        context_window=256_000,
+        context_window=128_000,
         max_output_tokens=32_000,
-        supports_reasoning=True,
+        supports_streaming=True,
+        supports_tools=True,
+        supports_reasoning=False,
         supports_vision=True,
+        supports_structured_output=True,
     ),
     "mistral-medium-latest": MistralModelInfo(
         model_id="mistral-medium-latest",
-        display_name="Mistral Medium 3.5",
+        display_name="Mistral Medium",
         tier="llm",
-        context_window=256_000,
+        context_window=128_000,
         max_output_tokens=32_000,
-        supports_reasoning=True,
+        supports_streaming=True,
+        supports_tools=True,
+        supports_reasoning=False,
         supports_vision=True,
-    ),
-    "mistral-small-latest": MistralModelInfo(
-        model_id="mistral-small-latest",
-        display_name="Mistral Small 4",
-        tier="mlm",
-        context_window=256_000,
-        max_output_tokens=32_000,
-        supports_reasoning=True,
-        supports_vision=True,
-    ),
-    "ministral-14b-latest": MistralModelInfo(
-        model_id="ministral-14b-latest",
-        display_name="Ministral 3 14B",
-        tier="mlm",
-        context_window=256_000,
-        max_output_tokens=32_000,
-        supports_vision=True,
-    ),
-    "ministral-8b-latest": MistralModelInfo(
-        model_id="ministral-8b-latest",
-        display_name="Ministral 3 8B",
-        tier="slm",
-        context_window=256_000,
-        max_output_tokens=32_000,
-        supports_vision=True,
-    ),
-    "ministral-3b-latest": MistralModelInfo(
-        model_id="ministral-3b-latest",
-        display_name="Ministral 3 3B",
-        tier="slm",
-        context_window=256_000,
-        max_output_tokens=32_000,
-        supports_vision=True,
+        supports_structured_output=True,
     ),
 }
-'@ | Set-Content .\ai\providers\llm\mistral\models.py
+
+
+def get_model(model_id: str) -> MistralModelInfo | None:
+    return MISTRAL_MODELS.get(model_id.strip())
+
+
+def is_supported_model(model_id: str) -> bool:
+    return model_id.strip() in MISTRAL_MODELS
+
+
+def list_models() -> list[MistralModelInfo]:
+    return list(MISTRAL_MODELS.values())
+
+
+__all__ = [
+    "MistralModelInfo",
+    "MISTRAL_MODELS",
+    "get_model",
+    "is_supported_model",
+    "list_models",
+]

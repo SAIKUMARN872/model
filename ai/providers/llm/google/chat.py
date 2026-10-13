@@ -1,95 +1,90 @@
-@'
 from __future__ import annotations
 
-import time
-
-from ...base.request import ProviderRequest
-from ...base.response import ProviderResponse, ProviderUsage
+from ...base.request import ChatRequest
+from ...base.response import (
+    ChatResponse,
+    ChatUsage,
+)
 
 from .client import GoogleClient
 from .utils import (
-    build_generate_payload,
-    calculate_cost,
-    estimate_latency_ms,
+    build_chat_payload,
+    extract_content,
     extract_finish_reason,
     extract_request_id,
-    extract_text,
+    extract_tool_calls,
     extract_usage,
 )
 
 
 class GoogleChat:
+    """Google Gemini chat adapter for ModelNow."""
+
     def __init__(
         self,
         client: GoogleClient,
-    ):
+    ) -> None:
         self.client = client
 
-    def generate(
+    async def create(
         self,
-        request: ProviderRequest,
-        input_cost_per_1m_tokens: float = 0.0,
-        output_cost_per_1m_tokens: float = 0.0,
-    ) -> ProviderResponse:
-        start_time = time.perf_counter()
-
-        payload = build_generate_payload(
-            messages=request.messages,
-            temperature=request.temperature,
-            max_output_tokens=request.max_tokens,
-            tools=request.tools,
-            metadata=request.metadata,
+        request: ChatRequest,
+    ) -> ChatResponse:
+        payload = build_chat_payload(
+            request
         )
 
-        raw_response = self.client.generate(
+        raw_response = self.client.generate_content(
             request.model,
             payload,
         )
 
-        token_usage = extract_usage(
+        usage_data = extract_usage(
             raw_response
         )
 
-        cost = calculate_cost(
-            input_tokens=token_usage["input_tokens"],
-            output_tokens=token_usage["output_tokens"],
-            input_cost_per_1m_tokens=input_cost_per_1m_tokens,
-            output_cost_per_1m_tokens=output_cost_per_1m_tokens,
+        usage = ChatUsage(
+            input_tokens=usage_data[
+                "input_tokens"
+            ],
+            output_tokens=usage_data[
+                "output_tokens"
+            ],
+            total_tokens=usage_data[
+                "total_tokens"
+            ],
+            estimated_cost=usage_data[
+                "estimated_cost"
+            ],
+            cached_input_tokens=usage_data[
+                "cached_input_tokens"
+            ],
+            reasoning_tokens=usage_data[
+                "reasoning_tokens"
+            ],
+            metadata=usage_data[
+                "metadata"
+            ],
         )
 
-        usage = ProviderUsage(
-            input_tokens=token_usage["input_tokens"],
-            output_tokens=token_usage["output_tokens"],
-            total_tokens=token_usage["total_tokens"],
-            estimated_cost=cost,
-        )
-
-        metadata = dict(request.metadata)
-
-        metadata.update(
-            {
-                "provider_request_id": (
-                    extract_request_id(
-                        raw_response
-                    )
-                ),
-            }
-        )
-
-        return ProviderResponse(
+        return ChatResponse(
             provider="google",
             model=request.model,
-            content=extract_text(
+            content=extract_content(
                 raw_response
             ),
             usage=usage,
-            latency_ms=estimate_latency_ms(
-                start_time
-            ),
             finish_reason=extract_finish_reason(
                 raw_response
             ),
+            request_id=extract_request_id(
+                raw_response
+            ),
+            tool_calls=extract_tool_calls(
+                raw_response
+            ),
             raw_response=raw_response,
-            metadata=metadata,
         )
-'@ | Set-Content ".\ai\providers\llm\google\chat.py" -Encoding UTF8
+
+
+__all__ = ["GoogleChat"]

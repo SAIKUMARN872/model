@@ -1,9 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...base.models import ModelCapability
-from ...constants import ProviderTier
+from ...base.models import ModelCapability, ProviderTier
 
 
 @dataclass(frozen=True)

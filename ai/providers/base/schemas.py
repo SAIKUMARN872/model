@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -184,4 +183,3 @@ __all__ = [
     "ValidationIssue",
     "ValidationResult",
 ]
-'@ | Set-Content ".\ai\providers\base\schemas.py" -Encoding UTF8

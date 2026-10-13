@@ -1,19 +1,29 @@
-@'
-from .client import OpenRouterClient
 from .config import OpenRouterConfig
 from .models import (
-    OpenRouterModelInfo,
-    OPENROUTER_MODELS,
+    DEFAULT_OPENROUTER_MODELS,
+    OpenRouterModel,
 )
-from .provider import OpenRouterProvider
+from .client import OpenRouterClient
+from .chat import OpenRouterChat
+from .stream import OpenRouterStreamParser
 from .tokenizer import OpenRouterTokenizer
+from .provider import OpenRouterProvider
+from .utils import (
+    parse_model,
+    parse_response,
+    request_to_payload,
+)
 
 __all__ = [
-    "OpenRouterClient",
     "OpenRouterConfig",
-    "OpenRouterModelInfo",
-    "OPENROUTER_MODELS",
-    "OpenRouterProvider",
+    "OpenRouterModel",
+    "DEFAULT_OPENROUTER_MODELS",
+    "OpenRouterClient",
+    "OpenRouterChat",
+    "OpenRouterStreamParser",
     "OpenRouterTokenizer",
+    "OpenRouterProvider",
+    "parse_model",
+    "parse_response",
+    "request_to_payload",
 ]
-'@ | Set-Content .\ai\providers\llm\openrouter\__init__.py

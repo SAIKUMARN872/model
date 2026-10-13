@@ -1,276 +1,225 @@
-@'
-import json
-import time
-from typing import Any, Dict, List
+from __future__ import annotations
+
+from typing import Any
+
+from ai.providers.base.request import ChatRequest
+from ai.providers.base.response import (
+    ChatResponse,
+    ChatUsage,
+)
+
+from .models import OpenRouterModel
 
 
-def normalize_messages(messages: List[Any]) -> List[Dict[str, Any]]:
-    normalized = []
-
-    for message in messages:
-        if hasattr(message, "role"):
-            role = message.role
-            content = message.content
-        else:
-            role = message.get("role")
-            content = message.get("content", "")
-
-        normalized.append(
-            {
-                "role": role,
-                "content": content,
-            }
-        )
-
-    return normalized
-
-
-def build_chat_payload(
-    model: str,
-    messages: List[Any],
-    temperature: float = 0.2,
-    max_tokens: int | None = None,
-    stream: bool = False,
-    tools: Any = None,
-    metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-
-    metadata = metadata or {}
-
-    payload: Dict[str, Any] = {
-        "model": model,
-        "messages": normalize_messages(messages),
-        "stream": stream,
+def _message_to_dict(message) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "role": message.role,
+        "content": message.content,
     }
 
-    if temperature is not None:
-        payload["temperature"] = temperature
+    if message.name is not None:
+        data["name"] = message.name
 
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
+    if message.tool_call_id is not None:
+        data["tool_call_id"] = message.tool_call_id
 
-    if tools:
-        payload["tools"] = tools
+    return data
 
-    if metadata.get("tool_choice") is not None:
-        payload["tool_choice"] = metadata[
-            "tool_choice"
+
+def request_to_payload(
+    request: ChatRequest,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": request.model,
+        "messages": [
+            _message_to_dict(message)
+            for message in request.messages
+        ],
+        "stream": request.stream,
+    }
+
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+
+    if request.max_tokens is not None:
+        payload["max_tokens"] = request.max_tokens
+
+    if request.top_p is not None:
+        payload["top_p"] = request.top_p
+
+    if request.tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            for tool in request.tools
         ]
 
-    if metadata.get("response_format"):
-        payload["response_format"] = metadata[
-            "response_format"
-        ]
+    if request.tool_choice is not None:
+        payload["tool_choice"] = request.tool_choice
 
-    if metadata.get("models"):
-        payload["models"] = metadata["models"]
+    if request.response_format is not None:
+        payload["response_format"] = request.response_format
 
-    if metadata.get("provider"):
-        payload["provider"] = metadata["provider"]
+    if request.stop is not None:
+        payload["stop"] = request.stop
 
-    if metadata.get("route"):
-        payload["route"] = metadata["route"]
-
-    if metadata.get("transforms"):
-        payload["transforms"] = metadata[
-            "transforms"
-        ]
-
-    if metadata.get("seed") is not None:
-        payload["seed"] = metadata["seed"]
-
-    if metadata.get("top_p") is not None:
-        payload["top_p"] = metadata["top_p"]
-
-    if metadata.get("frequency_penalty") is not None:
-        payload["frequency_penalty"] = metadata[
-            "frequency_penalty"
-        ]
-
-    if metadata.get("presence_penalty") is not None:
-        payload["presence_penalty"] = metadata[
-            "presence_penalty"
-        ]
-
-    if metadata.get("user"):
-        payload["user"] = metadata["user"]
+    if request.seed is not None:
+        payload["seed"] = request.seed
 
     return payload
 
 
-def extract_text(
-    data: Dict[str, Any],
-) -> str:
+def _parse_usage(
+    usage: dict[str, Any] | None,
+) -> ChatUsage:
+    usage = usage or {}
 
-    choices = data.get("choices") or []
-
-    if not choices:
-        return ""
-
-    message = choices[0].get("message") or {}
-    content = message.get("content", "")
-
-    if isinstance(content, str):
-        return content
-
-    if isinstance(content, list):
-        parts = []
-
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-
-            if item.get("type") == "text":
-                text = item.get("text", "")
-
-                if text:
-                    parts.append(text)
-
-        return "".join(parts)
-
-    return str(content)
-
-
-def extract_reasoning(
-    data: Dict[str, Any],
-) -> str:
-
-    choices = data.get("choices") or []
-
-    if not choices:
-        return ""
-
-    message = choices[0].get("message") or {}
-
-    return (
-        message.get("reasoning_content")
-        or message.get("reasoning")
-        or ""
-    )
-
-
-def extract_tool_calls(
-    data: Dict[str, Any],
-) -> list:
-
-    choices = data.get("choices") or []
-
-    if not choices:
-        return []
-
-    message = choices[0].get("message") or {}
-
-    return message.get("tool_calls") or []
-
-
-def extract_usage(
-    data: Dict[str, Any],
-) -> Dict[str, int]:
-
-    usage = data.get("usage") or {}
-
-    return {
-        "input_tokens": usage.get(
+    input_tokens = int(
+        usage.get(
             "prompt_tokens",
             usage.get("input_tokens", 0),
-        ),
-        "output_tokens": usage.get(
+        )
+        or 0
+    )
+
+    output_tokens = int(
+        usage.get(
             "completion_tokens",
             usage.get("output_tokens", 0),
-        ),
-        "total_tokens": usage.get(
+        )
+        or 0
+    )
+
+    total_tokens = int(
+        usage.get(
             "total_tokens",
-            0,
-        ),
-        "cached_tokens": usage.get(
-            "prompt_tokens_details",
-            {},
-        ).get("cached_tokens", 0),
-        "reasoning_tokens": usage.get(
-            "completion_tokens_details",
-            {},
-        ).get("reasoning_tokens", 0),
-    }
+            input_tokens + output_tokens,
+        )
+        or 0
+    )
+
+    reasoning_tokens = int(
+        usage.get("reasoning_tokens", 0)
+        or 0
+    )
+
+    cost = usage.get("cost", 0.0)
+
+    return ChatUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        estimated_cost=float(cost or 0.0),
+        reasoning_tokens=reasoning_tokens,
+        metadata=usage,
+    )
 
 
-def extract_finish_reason(
-    data: Dict[str, Any],
-) -> str | None:
-
+def parse_response(
+    data: dict[str, Any],
+    deployment: str,
+) -> ChatResponse:
     choices = data.get("choices") or []
 
     if not choices:
-        return None
+        raise ValueError(
+            "OpenRouter response does not contain choices"
+        )
 
-    return choices[0].get("finish_reason")
+    choice = choices[0]
 
+    message = choice.get("message") or {}
 
-def extract_request_id(
-    data: Dict[str, Any],
-) -> str | None:
+    content = message.get("content") or ""
 
-    return data.get("id")
+    tool_calls = message.get("tool_calls") or []
 
+    usage = _parse_usage(data.get("usage"))
 
-def extract_model(
-    data: Dict[str, Any],
-    requested_model: str,
-) -> str:
-
-    return data.get(
-        "model",
-        requested_model,
+    return ChatResponse(
+        provider="openrouter",
+        model=(
+            data.get("model")
+            or deployment
+        ),
+        content=content,
+        usage=usage,
+        finish_reason=choice.get("finish_reason"),
+        request_id=data.get("id"),
+        tool_calls=tool_calls,
+        raw_response=data,
+        metadata={
+            "object": data.get("object"),
+            "system_fingerprint": data.get(
+                "system_fingerprint"
+            ),
+        },
     )
 
 
-def extract_provider_metadata(
-    data: Dict[str, Any],
-) -> Dict[str, Any]:
+def parse_model(
+    data: dict[str, Any],
+) -> OpenRouterModel:
+    pricing = data.get("pricing") or {}
 
-    return {
-        "provider_name": data.get(
-            "provider"
-        ),
-        "model": data.get(
-            "model"
-        ),
-    }
+    def price_per_million(
+        key: str,
+    ) -> float:
+        value = pricing.get(key, 0)
 
+        try:
+            return float(value) * 1_000_000
+        except (TypeError, ValueError):
+            return 0.0
 
-def calculate_latency_ms(
-    start_time: float,
-) -> float:
+    top_provider = data.get("top_provider") or {}
 
-    return round(
-        (
-            time.perf_counter()
-            - start_time
-        ) * 1000,
-        2,
+    max_completion_tokens = int(
+        top_provider.get(
+            "max_completion_tokens",
+            data.get("max_completion_tokens", 0),
+        )
+        or 0
     )
 
+    supported_parameters = tuple(
+        str(value)
+        for value in (
+            data.get("supported_parameters") or []
+        )
+    )
 
-def is_retryable_status(
-    status_code: int,
-) -> bool:
-
-    return status_code in {
-        408,
-        409,
-        429,
-        500,
-        502,
-        503,
-        504,
-    }
-
-
-def json_dumps(
-    payload: Dict[str, Any],
-) -> bytes:
-
-    return json.dumps(
-        payload,
-        ensure_ascii=False,
-    ).encode("utf-8")
-'@ | Set-Content .\ai\providers\llm\openrouter\utils.py
+    return OpenRouterModel(
+        id=str(data.get("id", "")),
+        name=str(data.get("name", "")),
+        context_length=int(
+            data.get("context_length", 0) or 0
+        ),
+        max_output_tokens=max_completion_tokens,
+        input_cost_per_1m_tokens=price_per_million(
+            "prompt"
+        ),
+        output_cost_per_1m_tokens=price_per_million(
+            "completion"
+        ),
+        architecture=dict(
+            data.get("architecture") or {}
+        ),
+        top_provider=dict(top_provider),
+        supported_parameters=supported_parameters,
+        metadata={
+            "created": data.get("created"),
+            "canonical_slug": data.get(
+                "canonical_slug"
+            ),
+            "hugging_face_id": data.get(
+                "hugging_face_id"
+            ),
+        },
+    )

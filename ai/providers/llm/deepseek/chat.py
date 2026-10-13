@@ -1,154 +1,89 @@
-cd "C:\Users\pamar\Downloads\model-main\model-main"
+from __future__ import annotations
 
-@'
-import time
-
-from ai.providers.base.request import ChatRequest
-from ai.providers.base.response import ChatResponse, ChatUsage
+from ...base.request import ChatRequest
+from ...base.response import (
+    ChatResponse,
+    ChatUsage,
+)
 
 from .client import DeepSeekClient
+from .utils import (
+    build_chat_payload,
+    extract_content,
+    extract_finish_reason,
+    extract_request_id,
+    extract_tool_calls,
+    extract_usage,
+)
 
 
 class DeepSeekChat:
+    """DeepSeek chat adapter for ModelNow."""
 
-    def __init__(self, client: DeepSeekClient):
+    def __init__(
+        self,
+        client: DeepSeekClient,
+    ) -> None:
         self.client = client
 
-    async def generate(
+    async def create(
         self,
         request: ChatRequest,
     ) -> ChatResponse:
-
-        messages = [
-            {
-                "role": message.role,
-                "content": message.content,
-            }
-            for message in request.messages
-        ]
-
-        kwargs = {}
-
-        if request.temperature is not None:
-            kwargs["temperature"] = request.temperature
-
-        if request.max_tokens is not None:
-            kwargs["max_tokens"] = request.max_tokens
-
-        if request.top_p is not None:
-            kwargs["top_p"] = request.top_p
-
-        if request.stop is not None:
-            kwargs["stop"] = request.stop
-
-        if request.tools:
-            kwargs["tools"] = [
-                tool.model_dump()
-                if hasattr(tool, "model_dump")
-                else tool
-                for tool in request.tools
-            ]
-
-        if request.tool_choice is not None:
-            kwargs["tool_choice"] = request.tool_choice
-
-        if request.response_format is not None:
-            kwargs["response_format"] = request.response_format
-
-        if request.seed is not None:
-            kwargs["seed"] = request.seed
-
-        started = time.perf_counter()
-
-        response = await self.client.request(
-            model=request.model,
-            messages=messages,
-            **kwargs,
+        payload = build_chat_payload(
+            request
         )
 
-        latency_ms = (
-            time.perf_counter() - started
-        ) * 1000
-
-        choice = response.choices[0]
-        message = choice.message
-
-        usage = getattr(
-            response,
-            "usage",
-            None,
+        raw_response = self.client.chat(
+            payload
         )
 
-        input_tokens = (
-            getattr(
-                usage,
-                "prompt_tokens",
-                0,
-            )
-            if usage
-            else 0
+        usage_data = extract_usage(
+            raw_response
         )
 
-        output_tokens = (
-            getattr(
-                usage,
-                "completion_tokens",
-                0,
-            )
-            if usage
-            else 0
+        usage = ChatUsage(
+            input_tokens=usage_data[
+                "input_tokens"
+            ],
+            output_tokens=usage_data[
+                "output_tokens"
+            ],
+            total_tokens=usage_data[
+                "total_tokens"
+            ],
+            estimated_cost=usage_data[
+                "estimated_cost"
+            ],
+            cached_input_tokens=usage_data[
+                "cached_input_tokens"
+            ],
+            reasoning_tokens=usage_data[
+                "reasoning_tokens"
+            ],
+            metadata=usage_data[
+                "metadata"
+            ],
         )
-
-        total_tokens = (
-            getattr(
-                usage,
-                "total_tokens",
-                0,
-            )
-            if usage
-            else input_tokens + output_tokens
-        )
-
-        tool_calls = []
-
-        if getattr(
-            message,
-            "tool_calls",
-            None,
-        ):
-            for tool_call in message.tool_calls:
-
-                if hasattr(
-                    tool_call,
-                    "model_dump",
-                ):
-                    tool_calls.append(
-                        tool_call.model_dump()
-                    )
-                else:
-                    tool_calls.append(
-                        tool_call
-                    )
 
         return ChatResponse(
             provider="deepseek",
             model=request.model,
-            content=message.content or "",
-            usage=ChatUsage(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=total_tokens,
+            content=extract_content(
+                raw_response
             ),
-            latency_ms=latency_ms,
-            finish_reason=getattr(
-                choice,
-                "finish_reason",
-                None,
+            usage=usage,
+            finish_reason=extract_finish_reason(
+                raw_response
             ),
-            request_id=str(
-                request.request_id
+            request_id=extract_request_id(
+                raw_response
             ),
-            tool_calls=tool_calls,
-            raw_response=response,
+            tool_calls=extract_tool_calls(
+                raw_response
+            ),
+            raw_response=raw_response,
         )
-'@ | Set-Content ".\ai\providers\llm\deepseek\chat.py" -Encoding UTF8
+
+
+__all__ = ["DeepSeekChat"]

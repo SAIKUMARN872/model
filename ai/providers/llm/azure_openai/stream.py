@@ -1,131 +1,83 @@
-cd "C:\Users\pamar\Downloads\model-main\model-main"
-
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
-from ai.providers.base import ChatRequest, StreamChunk
-
-
-def build_stream_payload(
-    request: ChatRequest,
-) -> dict:
-    """
-    Build an Azure/OpenAI-compatible streaming payload
-    from a normalized ModelNow ChatRequest.
-    """
-
-    from .chat import build_chat_payload
-
-    payload = build_chat_payload(request)
-    payload["stream"] = True
-
-    return payload
+from ai.providers.base.response import StreamChunk
 
 
-def parse_sse_line(
-    line: str,
-) -> StreamChunk | None:
-    """
-    Parse one Server-Sent Event line from Azure OpenAI.
+class AzureOpenAIStreamParser:
+    def __init__(self, deployment: str) -> None:
+        self.deployment = deployment
 
-    Supported examples:
+    def parse_line(self, line: str) -> StreamChunk | None:
+        line = line.strip()
 
-        data: {"choices":[...]}
-        data: [DONE]
+        if not line:
+            return None
 
-    Empty/comment lines are ignored.
-    """
+        if line.startswith("data:"):
+            line = line[5:].strip()
 
-    if isinstance(line, bytes):
-        line = line.decode("utf-8", errors="replace")
+        if line == "[DONE]":
+            return StreamChunk(
+                provider="azure_openai",
+                model=self.deployment,
+                finish_reason="stop",
+                done=True,
+            )
 
-    line = line.strip()
+        try:
+            payload: dict[str, Any] = json.loads(line)
+        except json.JSONDecodeError:
+            return None
 
-    if not line:
-        return None
+        choices = payload.get("choices") or []
 
-    if line.startswith(":"):
-        return None
+        if not choices:
+            return StreamChunk(
+                provider="azure_openai",
+                model=self.deployment,
+                request_id=payload.get("id"),
+                metadata={
+                    "raw_response": payload,
+                },
+            )
 
-    if line.startswith("data:"):
-        line = line[5:].strip()
+        choice = choices[0] or {}
+        delta = choice.get("delta") or {}
 
-    if not line:
-        return None
+        content = delta.get("content") or ""
+        finish_reason = choice.get("finish_reason")
 
-    if line == "[DONE]":
+        tool_calls = delta.get("tool_calls") or []
+
+        done = finish_reason is not None
+
         return StreamChunk(
+            content=content,
             provider="azure_openai",
-            done=True,
-        )
-
-    try:
-        payload = json.loads(line)
-    except json.JSONDecodeError:
-        return None
-
-    choices = payload.get("choices") or []
-
-    if not choices:
-        return StreamChunk(
-            provider="azure_openai",
-            model=payload.get("model"),
+            model=self.deployment,
             request_id=payload.get("id"),
-            metadata=payload,
+            finish_reason=finish_reason,
+            tool_calls=tool_calls,
+            metadata={
+                "raw_response": payload,
+                "index": choice.get("index", 0),
+            },
+            done=done,
         )
-
-    choice = choices[0] or {}
-    delta = choice.get("delta") or {}
-
-    content = delta.get("content") or ""
-    tool_calls = delta.get("tool_calls") or []
-    finish_reason = choice.get("finish_reason")
-
-    metadata = {}
-
-    if payload.get("usage") is not None:
-        metadata["usage"] = payload["usage"]
-
-    if delta.get("role") is not None:
-        metadata["role"] = delta["role"]
-
-    return StreamChunk(
-        content=content,
-        provider="azure_openai",
-        model=payload.get("model"),
-        request_id=payload.get("id"),
-        finish_reason=finish_reason,
-        tool_calls=tool_calls,
-        metadata=metadata,
-    )
 
 
 async def parse_sse_stream(
-    lines: AsyncIterable[str],
+    lines: AsyncIterator[str],
+    deployment: str,
 ) -> AsyncIterator[StreamChunk]:
-    """
-    Convert an async SSE line stream into normalized
-    ModelNow StreamChunk objects.
-    """
+    parser = AzureOpenAIStreamParser(deployment)
 
     async for line in lines:
-        chunk = parse_sse_line(line)
+        chunk = parser.parse_line(line)
 
-        if chunk is None:
-            continue
-
-        yield chunk
-
-        if chunk.done:
-            break
-
-
-__all__ = [
-    "build_stream_payload",
-    "parse_sse_line",
-    "parse_sse_stream",
-]
-'@ | Set-Content ".\ai\providers\llm\azure_openai\stream.py" -Encoding UTF8
+        if chunk is not None:
+            yield chunk

@@ -1,0 +1,700 @@
+﻿from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from dataclasses import replace
+
+from ai.evaluation import EvaluationCase, EvaluationEngine
+
+from ai.cost_engine.engine import CostEngine
+from ai.cost_engine.models import CostRequest, TokenUsage
+from ai.cost_engine.pricing_provider import ModelRegistryPricingProvider
+
+from ai.inference_engine.engine import InferenceEngine
+from ai.inference_engine.models import InferenceRequest, InferenceResult
+
+from ai.latency_engine.engine import LatencyEngine
+from ai.latency_engine.models import LatencyObservation
+
+from .engine import RoutingEngine
+from .learning_router.feedback import FeedbackStore, RoutingFeedback
+from .model_memory.memory import MemoryRecord, ModelMemory
+from .quality_evaluator.evaluator import (
+    EvaluationInput,
+    QualityEvaluator,
+)
+from .quality_evaluator.scorer import QualityScore
+from .models import RoutingDecision, RoutingRequest
+from .fallback import FallbackEngine, RecoveryAction
+
+
+class RoutingInferenceAdapter:
+    """Bridge ModelNow routing to inference and post-inference intelligence."""
+
+    def __init__(
+        self,
+        routing_engine: RoutingEngine | None = None,
+        inference_engine: InferenceEngine | None = None,
+        quality_evaluator: QualityEvaluator | None = None,
+        model_memory: ModelMemory | None = None,
+        feedback_store: FeedbackStore | None = None,
+        latency_engine: LatencyEngine | None = None,
+        cost_engine: CostEngine | None = None,
+        evaluation_engine: EvaluationEngine | None = None,
+    ) -> None:
+        if latency_engine is not None:
+            self.latency_engine = latency_engine
+        elif routing_engine is not None:
+            self.latency_engine = routing_engine.latency_engine
+        else:
+            self.latency_engine = LatencyEngine()
+
+        if routing_engine is not None:
+            self.routing_engine = routing_engine
+        else:
+            self.routing_engine = RoutingEngine(
+                latency_engine=self.latency_engine,
+                model_memory=model_memory,
+                feedback_store=feedback_store,
+            )
+
+        self.inference_engine = (
+            inference_engine
+            if inference_engine is not None
+            else InferenceEngine()
+        )
+
+        self.evaluation_engine = (
+            evaluation_engine
+            if evaluation_engine is not None
+            else EvaluationEngine()
+        )
+
+        self.quality_evaluator = (
+            quality_evaluator
+            if quality_evaluator is not None
+            else QualityEvaluator()
+        )
+
+        self.model_memory = self.routing_engine.model_memory
+
+        self.feedback_store = self.routing_engine.feedback_store
+
+        registry = self.routing_engine.registry
+
+        if cost_engine is not None:
+            self.cost_engine = cost_engine
+        elif registry is not None:
+            self.cost_engine = CostEngine(
+                pricing_provider=ModelRegistryPricingProvider(
+                    registry
+                )
+            )
+        else:
+            self.cost_engine = None
+
+    async def route(
+        self,
+        request: RoutingRequest,
+    ) -> RoutingDecision:
+        """Select a model using the existing RoutingEngine."""
+        return await self.routing_engine.route(request)
+
+    @staticmethod
+    def to_inference_request(
+        request: RoutingRequest,
+        decision: RoutingDecision,
+    ) -> InferenceRequest:
+        """Convert a routing decision into an inference request."""
+        if not decision.model_id:
+            raise ValueError(
+                "Routing decision does not contain a model_id."
+            )
+
+        metadata = dict(request.metadata)
+
+        task_type = metadata.get("task_type")
+        if task_type is None or not str(task_type).strip():
+            task_type = decision.metadata.get("task_type")
+
+        if task_type is not None and str(task_type).strip():
+            metadata["task_type"] = str(task_type).strip().lower()
+
+        metadata.update(
+            {
+                "routing_status": decision.status.value,
+                "routing_provider": decision.provider,
+                "routing_tier": decision.tier,
+                "routing_score": decision.score,
+                "routing_reason": decision.reason,
+                "routing_candidates_considered": (
+                    decision.candidates_considered
+                ),
+            }
+        )
+
+        request_id = metadata.get("request_id")
+
+        if request_id is not None:
+            request_id = str(request_id).strip()
+
+            if not request_id:
+                request_id = None
+
+        return InferenceRequest(
+            model=decision.model_id,
+            messages=list(request.messages),
+            stream=request.stream,
+            request_id=request_id,
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _request_id(
+        request: RoutingRequest,
+        result: InferenceResult,
+    ) -> str:
+        request_id = (
+            result.request_id
+            or request.metadata.get("request_id")
+        )
+
+        if request_id is None:
+            raise ValueError(
+                "A request_id is required to record inference feedback."
+            )
+
+        value = str(request_id).strip()
+
+        if not value:
+            raise ValueError(
+                "request_id cannot be empty."
+            )
+
+        return value
+
+    @staticmethod
+    def _task_type(
+        request: RoutingRequest,
+        result: InferenceResult,
+    ) -> str:
+        task_type = result.metadata.get("task_type")
+
+        if task_type is None:
+            task_type = request.metadata.get("task_type")
+
+        if task_type is None:
+            return "general"
+
+        value = str(task_type).strip().lower()
+
+        return value or "general"
+
+    @staticmethod
+    def _provider(
+        result: InferenceResult,
+    ) -> str:
+        provider = result.metadata.get("routing_provider")
+
+        if provider is None:
+            provider = result.metadata.get("provider")
+
+        if provider is None:
+            provider = result.metadata.get("inference_provider")
+
+        if provider is None:
+            provider = result.backend.value
+
+        value = str(provider).strip()
+
+        return value or result.backend.value
+
+    @staticmethod
+    def _tier(
+        request: RoutingRequest,
+        result: InferenceResult,
+    ) -> str:
+        tier = result.metadata.get("routing_tier")
+
+        if tier is None:
+            tier = request.preferred_tier
+
+        if tier is None:
+            tier = result.metadata.get("tier")
+
+        value = str(tier).strip().lower() if tier is not None else ""
+
+        return value or "unknown"
+
+    def _calculate_cost(
+        self,
+        request: RoutingRequest,
+        result: InferenceResult,
+    ):
+        if self.cost_engine is None:
+            raise ValueError(
+                "Cost Engine is not configured for this routing adapter."
+            )
+
+        request_id = self._request_id(
+            request,
+            result,
+        )
+
+        provider = self._provider(result)
+
+        return self.cost_engine.calculate_cost(
+            CostRequest(
+                model=result.model,
+                provider=provider,
+                usage=(
+                    TokenUsage(
+                        input_tokens=result.usage.input_tokens,
+                        output_tokens=result.usage.output_tokens,
+                    )
+                ),
+                request_id=request_id,
+                metadata=dict(result.metadata),
+            )
+        )
+
+    def evaluate_result(
+        self,
+        request: RoutingRequest,
+        result: InferenceResult,
+        *,
+        reference: str | None = None,
+        required_terms: tuple[str, ...] = (),
+        relevance: float | None = None,
+        correctness: float | None = None,
+        completeness: float | None = None,
+        coherence: float | None = None,
+        target_latency_ms: float | None = None,
+        target_cost: float | None = None,
+        _cost: float | None = None,
+    ) -> QualityScore:
+        """Evaluate a completed inference result."""
+        if not isinstance(request, RoutingRequest):
+            raise TypeError(
+                "request must be a RoutingRequest instance"
+            )
+
+        if not isinstance(result, InferenceResult):
+            raise TypeError(
+                "result must be an InferenceResult instance"
+            )
+
+        if _cost is None:
+            cost_result = self._calculate_cost(
+                request,
+                result,
+            )
+            evaluation_cost = float(
+                cost_result.total_cost
+            )
+        else:
+            evaluation_cost = _cost
+
+        evaluation = EvaluationInput(
+            response=result.content,
+            reference=reference,
+            required_terms=required_terms,
+            relevance=relevance,
+            correctness=correctness,
+            completeness=completeness,
+            coherence=coherence,
+            latency_ms=result.latency_ms,
+            target_latency_ms=target_latency_ms,
+            cost=evaluation_cost,
+            target_cost=target_cost,
+        )
+
+        return self.quality_evaluator.evaluate(
+            evaluation
+        )
+
+    def record_result(
+        self,
+        request: RoutingRequest,
+        result: InferenceResult,
+        quality: QualityScore | None = None,
+        *,
+        reference: str | None = None,
+        context: str | None = None,
+        required_terms: tuple[str, ...] = (),
+        relevance: float | None = None,
+        correctness: float | None = None,
+        completeness: float | None = None,
+        coherence: float | None = None,
+        target_latency_ms: float | None = None,
+        target_cost: float | None = None,
+    ) -> tuple[QualityScore, MemoryRecord, RoutingFeedback]:
+        """Evaluate and persist a completed inference observation."""
+        if not isinstance(request, RoutingRequest):
+            raise TypeError(
+                "request must be a RoutingRequest instance"
+            )
+
+        if not isinstance(result, InferenceResult):
+            raise TypeError(
+                "result must be an InferenceResult instance"
+            )
+
+        cost_result = self._calculate_cost(
+            request,
+            result,
+        )
+
+        cost = float(
+            cost_result.total_cost
+        )
+
+        if quality is None:
+            quality = self.evaluate_result(
+                request,
+                result,
+                reference=reference,
+                required_terms=required_terms,
+                relevance=relevance,
+                correctness=correctness,
+                completeness=completeness,
+                coherence=coherence,
+                target_latency_ms=target_latency_ms,
+                target_cost=target_cost,
+                _cost=cost,
+            )
+
+        request_id = self._request_id(
+            request,
+            result,
+        )
+
+        if result.latency_ms is None:
+            raise ValueError(
+                "Inference result is missing measured latency. "
+                "Refusing to record unknown latency as 0.0 ms."
+            )
+
+        latency_ms = result.latency_ms
+        success = result.status.value == "completed"
+        provider = self._provider(result)
+        tier = self._tier(request, result)
+        task_type = self._task_type(request, result)
+
+        metadata = dict(result.metadata)
+
+        metadata.update(
+            {
+                "quality_grade": quality.grade,
+                "quality_passed": quality.passed,
+                "quality_metrics": quality.metrics,
+                "inference_status": result.status.value,
+                "backend": result.backend.value,
+                "input_tokens": result.usage.input_tokens,
+                "output_tokens": result.usage.output_tokens,
+                "total_tokens": result.usage.total_tokens,
+            }
+        )
+
+        # Supplemental reference evaluation must not replace the adaptive
+        # QualityScore used by ModelNow's existing feedback loop.
+        if reference is not None or context is not None:
+            if result.content.strip():
+                try:
+                    evaluation_case = EvaluationCase(
+                        case_id=request_id,
+                        model_name=result.model,
+                        answer=result.content,
+                        reference_answer=reference,
+                        context=context,
+                        latency_ms=latency_ms,
+                        cost_usd=cost,
+                        input_tokens=result.usage.input_tokens,
+                        output_tokens=result.usage.output_tokens,
+                        metadata={"source": "routing_inference_adapter"},
+                    )
+                    evaluation_result = self.evaluation_engine.evaluate(
+                        evaluation_case
+                    )
+                    metadata["reference_evaluation"] = {
+                        "case_id": evaluation_result.case_id,
+                        "model_name": evaluation_result.model_name,
+                        "metrics": evaluation_result.metrics,
+                        "quality_score": evaluation_result.quality_score,
+                    }
+                    metadata["reference_evaluation_status"] = "completed"
+                except Exception as evaluation_error:
+                    # Supplemental evaluation must not prevent feedback
+                    # from being recorded.
+                    metadata["reference_evaluation_status"] = "failed"
+                    metadata["reference_evaluation_error"] = type(
+                        evaluation_error
+                    ).__name__
+            else:
+                metadata["reference_evaluation_status"] = "skipped_empty_answer"
+
+
+        latency_observation = LatencyObservation(
+            request_id=request_id,
+            model_id=result.model,
+            provider=provider,
+            tier=tier,
+            total_latency_ms=latency_ms,
+            ttft_ms=result.time_to_first_token_ms,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            success=success,
+            task_type=task_type,
+            metadata=metadata,
+        )
+
+        self.latency_engine.record(
+            latency_observation
+        )
+        memory_record = MemoryRecord(
+            request_id=request_id,
+            model_id=result.model,
+            provider=provider,
+            tier=tier,
+            quality_score=quality.score,
+            latency_ms=latency_ms,
+            cost=cost,
+            success=success,
+            task_type=task_type,
+            metadata=metadata,
+        )
+
+        feedback = RoutingFeedback(
+            request_id=request_id,
+            model_id=result.model,
+            provider=provider,
+            tier=tier,
+            task_type=task_type,
+            quality_score=quality.score,
+            latency_ms=latency_ms,
+            cost=cost,
+            success=success,
+            reward=(
+                quality.score
+                if success
+                else -quality.score
+            ),
+            metadata=metadata,
+        )
+
+        self.model_memory.add(
+            memory_record
+        )
+
+        self.feedback_store.add(
+            feedback
+        )
+
+        return quality, memory_record, feedback
+
+    async def infer(
+        self,
+        request: RoutingRequest,
+    ) -> InferenceResult:
+        """Route, execute, and try eligible alternate models on failure."""
+        decision = await self.route(request)
+
+        inference_request = self.to_inference_request(
+            request,
+            decision,
+        )
+
+        try:
+            result = await self.inference_engine.infer(
+                inference_request
+            )
+        except Exception as primary_error:
+            try:
+                candidates = await self.routing_engine.get_candidates(
+                    request
+                )
+            except Exception:
+                raise primary_error
+
+            attempted: set[str] = set()
+            failed_model_order: list[str] = []
+
+            if decision.model_id:
+                attempted.add(decision.model_id)
+                failed_model_order.append(decision.model_id)
+
+            current_decision = decision
+            last_error = primary_error
+            fallback_engine = FallbackEngine()
+
+            while True:
+                remaining_candidates = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.model_id not in attempted
+                ]
+
+                plan = fallback_engine.plan(
+                    request=request,
+                    primary_decision=current_decision,
+                    candidates=remaining_candidates,
+                    attempt=2,
+                )
+
+                if (
+                    plan.action != RecoveryAction.FALLBACK
+                    or not plan.fallback_model
+                ):
+                    raise last_error
+
+                candidate = next(
+                    (
+                        item
+                        for item in remaining_candidates
+                        if item.model_id == plan.fallback_model
+                    ),
+                    None,
+                )
+
+                if candidate is None:
+                    raise last_error
+
+                attempted.add(candidate.model_id)
+
+                fallback_metadata = dict(current_decision.metadata)
+                fallback_metadata.update(
+                    {
+                        "fallback_applied": True,
+                        "fallback_from_model": current_decision.model_id,
+                        "fallback_reason": plan.reason,
+                        "fallback_attempt": len(failed_model_order) + 1,
+                    }
+                )
+
+                fallback_decision = replace(
+                    current_decision,
+                    model_id=candidate.model_id,
+                    provider=candidate.provider,
+                    tier=candidate.tier,
+                    score=None,
+                    reason=plan.reason,
+                    metadata=fallback_metadata,
+                )
+
+                fallback_request = self.to_inference_request(
+                    request,
+                    fallback_decision,
+                )
+
+                try:
+                    result = await self.inference_engine.infer(
+                        fallback_request
+                    )
+                except Exception as fallback_error:
+                    last_error = fallback_error
+                    failed_model_order.append(candidate.model_id)
+                    current_decision = fallback_decision
+                    continue
+
+                result_metadata = dict(fallback_request.metadata)
+                result_metadata.update(result.metadata)
+                result_metadata.update(
+                    {
+                        "fallback_applied": True,
+                        "fallback_original_model": decision.model_id,
+                        "fallback_selected_model": candidate.model_id,
+                        "fallback_failed_models": list(failed_model_order),
+                        "fallback_reason": plan.reason,
+                    }
+                )
+
+                return replace(
+                    result,
+                    metadata=result_metadata,
+                )
+
+        result_metadata = dict(inference_request.metadata)
+        result_metadata.update(result.metadata)
+
+        return replace(
+            result,
+            metadata=result_metadata,
+        )
+    async def infer_and_record(
+        self,
+        request: RoutingRequest,
+        *,
+        reference: str | None = None,
+        context: str | None = None,
+        required_terms: tuple[str, ...] = (),
+        relevance: float | None = None,
+        correctness: float | None = None,
+        completeness: float | None = None,
+        coherence: float | None = None,
+        target_latency_ms: float | None = None,
+        target_cost: float | None = None,
+    ) -> tuple[
+        InferenceResult,
+        QualityScore,
+        MemoryRecord,
+        RoutingFeedback,
+    ]:
+        """Route, infer, evaluate, and persist the result."""
+        result = await self.infer(request)
+
+        quality, memory_record, feedback = self.record_result(
+            request,
+            result,
+            reference=reference,
+            context=context,
+            required_terms=required_terms,
+            relevance=relevance,
+            correctness=correctness,
+            completeness=completeness,
+            coherence=coherence,
+            target_latency_ms=target_latency_ms,
+            target_cost=target_cost,
+        )
+
+        return (
+            result,
+            quality,
+            memory_record,
+            feedback,
+        )
+
+    async def stream(
+        self,
+        request: RoutingRequest,
+    ) -> AsyncIterator[InferenceResult]:
+        """Route the request, then stream through InferenceEngine."""
+        decision = await self.route(request)
+
+        inference_request = self.to_inference_request(
+            request,
+            decision,
+        )
+
+        async for result in self.inference_engine.stream(
+            inference_request
+        ):
+            yield result
+
+
+__all__ = [
+    "RoutingInferenceAdapter",
+]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

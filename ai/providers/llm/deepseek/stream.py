@@ -1,67 +1,152 @@
-@'
 from __future__ import annotations
 
-from typing import Dict, Iterator
+import json
+from collections.abc import AsyncIterator
+from typing import Any
 
-from ...base.request import ProviderRequest
+from ...base.request import ChatRequest
+from ...base.response import StreamChunk
 
 from .client import DeepSeekClient
-from .utils import build_chat_payload
+from .utils import (
+    build_chat_payload,
+    extract_stream_finish_reason,
+    extract_stream_text,
+    extract_stream_usage,
+)
 
 
 class DeepSeekStream:
+    """DeepSeek streaming adapter for ModelNow."""
+
     def __init__(
         self,
         client: DeepSeekClient,
-    ):
+    ) -> None:
         self.client = client
 
-    def generate(
+    async def stream(
         self,
-        request: ProviderRequest,
-    ) -> Iterator[str]:
+        request: ChatRequest,
+    ) -> AsyncIterator[StreamChunk]:
         payload = build_chat_payload(
-            model=request.model,
-            messages=request.messages,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            stream=True,
-            tools=request.tools,
-            metadata=request.metadata,
+            request
         )
 
-        payload["stream_options"] = {
-            "include_usage": True,
-        }
+        payload["stream"] = True
 
-        for event in self.client.stream(
+        raw_stream = self.client.stream_chat(
             payload
+        )
+
+        for event in _parse_sse_events(
+            raw_stream
         ):
-            yield from self._extract_text(
+            text = extract_stream_text(
                 event
             )
 
-    @staticmethod
-    def _extract_text(
-        event: Dict,
-    ) -> Iterator[str]:
-        choices = event.get(
-            "choices"
-        ) or []
-
-        for choice in choices:
-            delta = (
-                choice.get("delta")
-                or {}
+            finish_reason = (
+                extract_stream_finish_reason(
+                    event
+                )
             )
 
-            content = delta.get(
-                "content"
+            usage = extract_stream_usage(
+                event
             )
 
-            if (
-                isinstance(content, str)
-                and content
-            ):
-                yield content
-'@ | Set-Content ".\ai\providers\llm\deepseek\stream.py" -Encoding UTF8
+            event_id = event.get(
+                "id"
+            )
+
+            done = (
+                event.get("done") is True
+                or finish_reason is not None
+            )
+
+            yield StreamChunk(
+                content=text,
+                provider="deepseek",
+                model=request.model,
+                request_id=(
+                    str(event_id)
+                    if event_id is not None
+                    else str(request.request_id)
+                ),
+                finish_reason=finish_reason,
+                usage=usage,
+                done=done,
+                metadata={
+                    "object": event.get(
+                        "object"
+                    ),
+                },
+            )
+
+
+def _parse_sse_events(
+    raw: str,
+) -> list[dict[str, Any]]:
+    """Parse OpenAI-compatible SSE response text."""
+
+    events: list[dict[str, Any]] = []
+
+    current_data: list[str] = []
+
+    for line in raw.splitlines():
+        line = line.strip()
+
+        if not line:
+            if current_data:
+                event = _decode_event(
+                    "\n".join(current_data)
+                )
+
+                if event is not None:
+                    events.append(event)
+
+                current_data = []
+
+            continue
+
+        if line.startswith("data:"):
+            current_data.append(
+                line[5:].strip()
+            )
+
+    if current_data:
+        event = _decode_event(
+            "\n".join(current_data)
+        )
+
+        if event is not None:
+            events.append(event)
+
+    return events
+
+
+def _decode_event(
+    data: str,
+) -> dict[str, Any] | None:
+    if not data:
+        return None
+
+    if data == "[DONE]":
+        return {
+            "done": True
+        }
+
+    try:
+        value = json.loads(data)
+    except json.JSONDecodeError:
+        return None
+
+    return (
+        value
+        if isinstance(value, dict)
+        else None
+    )
+
+
+__all__ = ["DeepSeekStream"]

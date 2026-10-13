@@ -1,15 +1,2 @@
-
-export {
-  AccountService,
-  accountService,
-} from "./account-service.js";
-
-export type {
-  AccountRecord,
-  CreateAccountInput,
-  UpdateAccountInput,
-  ServiceError,
-  ServiceResult,
-  AccountHealth,
-} from "./account-service.js";
-
+export { AccountService } from "./account-service.js";
+export { ProfileService } from "./profile-service.js";
