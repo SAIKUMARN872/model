@@ -1,8 +1,5 @@
-﻿import {
-  userService,
-  type User,
-  type UpdateUserInput,
-} from "../users/user.js";
+﻿import { type UpdateUserInput } from "../users/user.js";
+import { userService } from "../users/manager.js";
 
 export interface ProfileResponse {
   id: string;
@@ -154,10 +151,10 @@ export class ProfileController {
     return {
       id: user.id,
       email: user.email,
-      name: user.name,
-      status: user.status,
+      name: user.name ?? "",
+      status: user.status ?? (user.active ? "active" : "inactive"),
       roles: [...user.roles],
-      metadata: { ...user.metadata },
+      metadata: { ...(user.metadata ?? {}) },
       createdAt: new Date(user.createdAt),
       updatedAt: new Date(user.updatedAt),
       ...(user.lastLoginAt
@@ -179,3 +176,5 @@ export class ProfileController {
 
 export const profileController =
   new ProfileController();
+
+

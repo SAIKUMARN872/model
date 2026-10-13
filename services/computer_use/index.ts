@@ -1,0 +1,22 @@
+export * from "./interfaces.js";
+export * from "./models.js";
+export * from "./schemas.js";
+export * from "./utils.js";
+export * from "./constants.js";
+export * from "./exceptions.js";
+export * from "./engine.js";
+export * from "./api/index.js";
+export * from "./config/index.js";
+export * from "./events/index.js";
+export * from "./jobs/computer-job.js";
+export * from "./jobs/job-manager.js";
+export * from "./jobs/session-job.js";
+export * from "./jobs/verification-job.js";
+export * from "./repository/index.js";
+export * from "./services/index.js";
+export * from "./workers/computer-worker.js";
+export * from "./workers/session-worker.js";
+export * from "./workers/verification-worker.js";
+
+import { ComputerUseService } from "./services/computer-use-service.js";
+export const computerUseService = new ComputerUseService();
