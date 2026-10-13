@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test:anomaly": "tsx --test services/analytics/anomaly_detection/test_anomaly_detection.ts"
+    "test:anomaly": "tsx --test services/analytics/anomaly_detection/test_anomaly_detection.ts",
+    "test:analytics": "tsx services/analytics/test_analytics.ts"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.4"
   }
 }
