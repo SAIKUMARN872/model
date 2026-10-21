@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from ...base.models import (
     ModelCapability,
@@ -22,19 +22,25 @@ from .models import GEMMA_MODELS
 class GemmaProvider(BaseProvider):
     """ModelNow local SLM provider for Google Gemma."""
 
+    name = "Google Gemma"
+    version = "1.0.0"
+
     def __init__(
         self,
         config: GemmaConfig | None = None,
     ) -> None:
         self.config = config or GemmaConfig()
-        self.client = GemmaClient(self.config)
+        super().__init__(self.config)
 
-        self._initialized = False
+        self.client = GemmaClient(self.config)
         self._status = ProviderStatus.UNKNOWN
 
     async def initialize(self) -> None:
         if not self.config.enabled:
             self._status = ProviderStatus.DISABLED
+            return
+
+        if self._initialized:
             return
 
         self._initialized = True
@@ -49,16 +55,21 @@ class GemmaProvider(BaseProvider):
     async def health_check(
         self,
     ) -> ProviderHealth:
+        if not self.config.enabled:
+            return ProviderHealth(
+                healthy=False,
+                provider="gemma",
+                status=ProviderStatus.DISABLED,
+                message="Gemma SLM provider is disabled.",
+            )
+
         if not self._initialized:
             return ProviderHealth(
                 healthy=False,
                 provider="gemma",
                 status=ProviderStatus.UNAVAILABLE,
                 latency_ms=None,
-                message=(
-                    "Gemma provider "
-                    "is not initialized."
-                ),
+                message="Gemma provider is not initialized.",
             )
 
         return ProviderHealth(
@@ -66,9 +77,7 @@ class GemmaProvider(BaseProvider):
             provider="gemma",
             status=ProviderStatus.READY,
             latency_ms=0.0,
-            message=(
-                "Gemma SLM provider is ready."
-            ),
+            message="Gemma SLM provider is ready.",
             metadata={
                 "execution": "local",
                 "model_loaded": self.client.loaded,
@@ -84,7 +93,7 @@ class GemmaProvider(BaseProvider):
         self,
         model_id: str,
     ) -> bool:
-        value = model_id.lower()
+        value = model_id.strip().lower()
 
         for model in GEMMA_MODELS:
             if model.id.lower() == value:
@@ -102,14 +111,12 @@ class GemmaProvider(BaseProvider):
         self,
         request: ChatRequest,
     ) -> ChatResponse:
-        await self.ensure_initialized()
+        self.ensure_initialized()
+        self.ensure_enabled()
 
-        if not await self.supports_model(
-            request.model
-        ):
+        if not await self.supports_model(request.model):
             raise ValueError(
-                f"Unsupported Gemma model: "
-                f"{request.model}"
+                f"Unsupported Gemma model: {request.model}"
             )
 
         return await self.client.chat(request)
@@ -118,35 +125,36 @@ class GemmaProvider(BaseProvider):
         self,
         request: ChatRequest,
     ) -> AsyncIterator[StreamChunk]:
-        await self.ensure_initialized()
+        self.ensure_initialized()
+        self.ensure_enabled()
 
-        if not await self.supports_model(
-            request.model
-        ):
+        if not await self.supports_model(request.model):
             raise ValueError(
-                f"Unsupported Gemma model: "
-                f"{request.model}"
+                f"Unsupported Gemma model: {request.model}"
             )
 
-        async for chunk in self.client.stream(
-            request
-        ):
+        async for chunk in self.client.stream(request):
             yield chunk
 
+    @property
     def metadata(self) -> ProviderMetadata:
         return ProviderMetadata(
             provider_id="gemma",
-            display_name="Google Gemma",
-            version="1.0.0",
-            tier_support=(ProviderTier.SLM,),
-            capabilities=(
-                ModelCapability.CHAT,
-                ModelCapability.REASONING,
-                ModelCapability.CODE,
-                ModelCapability.STREAMING,
-                ModelCapability.LONG_CONTEXT,
-                ModelCapability.STRUCTURED_OUTPUT,
-                ModelCapability.JSON,
+            display_name=self.name,
+            version=self.version,
+            tier_support=frozenset(
+                {ProviderTier.SLM}
+            ),
+            capabilities=frozenset(
+                {
+                    ModelCapability.CHAT,
+                    ModelCapability.REASONING,
+                    ModelCapability.CODE,
+                    ModelCapability.STREAMING,
+                    ModelCapability.LONG_CONTEXT,
+                    ModelCapability.STRUCTURED_OUTPUT,
+                    ModelCapability.JSON,
+                }
             ),
             enterprise_ready=True,
             streaming_supported=True,
@@ -155,5 +163,9 @@ class GemmaProvider(BaseProvider):
                 "family": "Gemma",
                 "execution": "local",
                 "open_model": True,
+                "organization": "Google",
             },
         )
+
+
+__all__ = ["GemmaProvider"]

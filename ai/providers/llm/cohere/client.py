@@ -1,8 +1,10 @@
-@'
+from __future__ import annotations
+
 import json
+import socket
 import urllib.error
 import urllib.request
-from typing import Any, Dict
+from typing import Any
 
 from .config import CohereConfig
 from .utils import is_retryable_status, json_dumps
@@ -47,9 +49,13 @@ class CohereClient:
         self,
         method: str,
         path: str,
-        payload: Dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
         accept: str = "application/json",
-    ) -> Dict[str, Any] | str:
+    ) -> dict[str, Any] | str:
+        if not self.config.enabled:
+            raise CohereClientError(
+                "Cohere provider is disabled."
+            )
 
         if not self.config.api_key:
             raise CohereAuthenticationError(
@@ -85,9 +91,9 @@ class CohereClient:
                 request,
                 timeout=self.config.timeout_seconds,
             ) as response:
-
                 raw = response.read().decode(
-                    "utf-8"
+                    "utf-8",
+                    errors="replace",
                 )
 
                 if not raw:
@@ -109,49 +115,52 @@ class CohereClient:
                     "Cohere authentication failed.",
                     exc.code,
                     raw,
-                )
+                ) from exc
 
             if exc.code == 429:
                 raise CohereRateLimitError(
                     "Cohere rate limit exceeded.",
                     exc.code,
                     raw,
-                )
+                ) from exc
 
             if is_retryable_status(exc.code):
                 raise CohereUnavailableError(
-                    (
-                        "Cohere service returned "
-                        f"HTTP {exc.code}."
-                    ),
+                    f"Cohere service returned HTTP {exc.code}.",
                     exc.code,
                     raw,
-                )
+                ) from exc
 
             raise CohereClientError(
-                (
-                    "Cohere API error: "
-                    f"HTTP {exc.code}."
-                ),
+                f"Cohere API error: HTTP {exc.code}.",
                 exc.code,
                 raw,
-            )
-
-        except urllib.error.URLError as exc:
-            raise CohereUnavailableError(
-                f"Cohere network error: {exc.reason}"
             ) from exc
 
-        except TimeoutError as exc:
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", exc)
+
+            if isinstance(
+                reason,
+                (TimeoutError, socket.timeout),
+            ):
+                raise CohereTimeoutError(
+                    "Cohere request timed out."
+                ) from exc
+
+            raise CohereUnavailableError(
+                f"Cohere network error: {reason}"
+            ) from exc
+
+        except (TimeoutError, socket.timeout) as exc:
             raise CohereTimeoutError(
                 "Cohere request timed out."
             ) from exc
 
     def chat(
         self,
-        payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
-
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         result = self._request(
             "POST",
             "/v2/chat",
@@ -165,9 +174,8 @@ class CohereClient:
 
     def stream_chat(
         self,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> str:
-
         result = self._request(
             "POST",
             "/v2/chat",
@@ -175,12 +183,15 @@ class CohereClient:
             accept="text/event-stream",
         )
 
-        return str(result)
+        return result if isinstance(result, str) else json.dumps(result)
 
-    def list_models(self) -> Dict[str, Any]:
+    def list_models(
+        self,
+        page_size: int = 100,
+    ) -> dict[str, Any]:
         result = self._request(
             "GET",
-            "/v1/models",
+            f"/v1/models?page_size={page_size}",
         )
 
         if isinstance(result, str):
@@ -192,7 +203,15 @@ class CohereClient:
         try:
             result = self.list_models()
             return isinstance(result, dict)
-
         except CohereClientError:
             return False
-'@ | Set-Content .\ai\providers\llm\cohere\client.py
+
+
+__all__ = [
+    "CohereClient",
+    "CohereClientError",
+    "CohereAuthenticationError",
+    "CohereRateLimitError",
+    "CohereTimeoutError",
+    "CohereUnavailableError",
+]

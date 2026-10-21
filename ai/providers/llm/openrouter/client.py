@@ -1,225 +1,160 @@
-@'
+from __future__ import annotations
+
+import asyncio
 import json
-import urllib.error
-import urllib.request
-from typing import Any, Dict
+import time
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from .config import OpenRouterConfig
-from .utils import (
-    is_retryable_status,
-    json_dumps,
-)
-
-
-class OpenRouterClientError(Exception):
-    def __init__(
-        self,
-        message: str,
-        status_code: int | None = None,
-        response_body: str | None = None,
-    ):
-        super().__init__(message)
-        self.status_code = status_code
-        self.response_body = response_body
-
-
-class OpenRouterAuthenticationError(
-    OpenRouterClientError
-):
-    pass
-
-
-class OpenRouterRateLimitError(
-    OpenRouterClientError
-):
-    pass
-
-
-class OpenRouterTimeoutError(
-    OpenRouterClientError
-):
-    pass
-
-
-class OpenRouterUnavailableError(
-    OpenRouterClientError
-):
-    pass
 
 
 class OpenRouterClient:
     def __init__(
         self,
         config: OpenRouterConfig,
-    ):
+    ) -> None:
         self.config = config
 
-    def _request(
+    def _request_sync(
         self,
-        method: str,
-        path: str,
-        payload: Dict[str, Any] | None = None,
-        accept: str = "application/json",
-    ) -> Dict[str, Any] | str:
+        url: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        body = None
 
-        if not self.config.api_key:
-            raise OpenRouterAuthenticationError(
-                "OPENROUTER_API_KEY is not configured."
-            )
+        if payload is not None:
+            body = json.dumps(payload).encode("utf-8")
 
-        url = f"{self.config.base_url}{path}"
+        request_headers = self.config.headers.copy()
 
-        headers = {
-            "Authorization": (
-                f"Bearer {self.config.api_key}"
-            ),
-            "Content-Type": "application/json",
-            "Accept": accept,
-        }
+        if headers:
+            request_headers.update(headers)
 
-        if self.config.http_referer:
-            headers["HTTP-Referer"] = (
-                self.config.http_referer
-            )
-
-        if self.config.x_title:
-            headers["X-Title"] = (
-                self.config.x_title
-            )
-
-        body = (
-            json_dumps(payload)
-            if payload is not None
-            else None
-        )
-
-        request = urllib.request.Request(
+        request = Request(
             url=url,
             data=body,
-            headers=headers,
+            headers=request_headers,
             method=method,
         )
 
-        try:
-            with urllib.request.urlopen(
-                request,
-                timeout=self.config.timeout_seconds,
-            ) as response:
+        attempts = max(
+            1,
+            self.config.max_retries + 1
+            if self.config.retry_enabled
+            else 1,
+        )
 
-                raw = response.read().decode(
-                    "utf-8"
-                )
+        last_error: Exception | None = None
+
+        for attempt in range(attempts):
+            try:
+                with urlopen(
+                    request,
+                    timeout=self.config.timeout_seconds,
+                ) as response:
+                    raw = response.read().decode("utf-8")
 
                 if not raw:
                     return {}
 
-                if accept == "text/event-stream":
-                    return raw
-
                 return json.loads(raw)
 
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode(
-                "utf-8",
-                errors="replace",
-            )
-
-            if exc.code in {401, 403}:
-                raise OpenRouterAuthenticationError(
-                    "OpenRouter authentication failed.",
-                    exc.code,
-                    raw,
+            except HTTPError as exc:
+                error_body = exc.read().decode(
+                    "utf-8",
+                    errors="replace",
                 )
 
-            if exc.code == 429:
-                raise OpenRouterRateLimitError(
-                    "OpenRouter rate limit exceeded.",
-                    exc.code,
-                    raw,
+                last_error = RuntimeError(
+                    f"OpenRouter HTTP {exc.code}: {error_body}"
                 )
 
-            if is_retryable_status(exc.code):
-                raise OpenRouterUnavailableError(
-                    (
-                        "OpenRouter returned "
-                        f"HTTP {exc.code}."
-                    ),
-                    exc.code,
-                    raw,
-                )
+                if exc.code < 500 or attempt == attempts - 1:
+                    raise last_error from exc
 
-            raise OpenRouterClientError(
-                (
-                    "OpenRouter API error: "
-                    f"HTTP {exc.code}."
-                ),
-                exc.code,
-                raw,
-            )
+            except (URLError, TimeoutError) as exc:
+                last_error = exc
 
-        except urllib.error.URLError as exc:
-            raise OpenRouterUnavailableError(
-                f"OpenRouter network error: {exc.reason}"
-            ) from exc
+                if attempt == attempts - 1:
+                    raise
 
-        except TimeoutError as exc:
-            raise OpenRouterTimeoutError(
-                "OpenRouter request timed out."
-            ) from exc
+            if attempt < attempts - 1:
+                time.sleep(min(2**attempt, 8))
 
-    def chat(
+        if last_error:
+            raise last_error
+
+        raise RuntimeError("OpenRouter request failed")
+
+    async def request(
         self,
-        payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
-
-        result = self._request(
-            "POST",
-            "/chat/completions",
-            payload,
+        url: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._request_sync,
+            url,
+            method=method,
+            payload=payload,
+            headers=headers,
         )
 
-        if isinstance(result, str):
-            return json.loads(result)
-
-        return result
-
-    def stream_chat(
+    async def chat(
         self,
-        payload: Dict[str, Any],
-    ) -> str:
-
-        result = self._request(
-            "POST",
-            "/chat/completions",
-            payload,
-            accept="text/event-stream",
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await self.request(
+            self.config.chat_completions_url,
+            method="POST",
+            payload=payload,
         )
 
-        return str(result)
-
-    def list_models(
-        self,
-    ) -> Dict[str, Any]:
-
-        result = self._request(
-            "GET",
-            "/models",
+    async def list_models(self) -> dict[str, Any]:
+        return await self.request(
+            self.config.models_url,
+            method="GET",
         )
 
-        if isinstance(result, str):
-            return json.loads(result)
+    def _stream_sync(
+        self,
+        payload: dict[str, Any],
+    ) -> Iterator[str]:
+        request = Request(
+            url=self.config.chat_completions_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=self.config.headers,
+            method="POST",
+        )
 
-        return result
+        with urlopen(
+            request,
+            timeout=self.config.timeout_seconds,
+        ) as response:
+            for raw_line in response:
+                yield raw_line.decode(
+                    "utf-8",
+                    errors="replace",
+                ).rstrip("\r\n")
 
-    def health_check(self) -> bool:
-        try:
-            result = self.list_models()
+    async def stream(
+        self,
+        payload: dict[str, Any],
+    ) -> AsyncIterator[str]:
+        iterator = self._stream_sync(payload)
 
-            return isinstance(
-                result,
-                dict,
-            )
+        while True:
+            try:
+                line = await asyncio.to_thread(next, iterator)
+            except StopIteration:
+                break
 
-        except OpenRouterClientError:
-            return False
-'@ | Set-Content .\ai\providers\llm\openrouter\client.py
+            yield line

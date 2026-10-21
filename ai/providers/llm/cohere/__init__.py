@@ -1,19 +1,35 @@
-@'
-from .client import CohereClient
+from .client import (
+    CohereAuthenticationError,
+    CohereClient,
+    CohereClientError,
+    CohereRateLimitError,
+    CohereTimeoutError,
+    CohereUnavailableError,
+)
 from .config import CohereConfig
 from .models import (
-    CohereModelInfo,
     COHERE_MODELS,
+    CohereModelInfo,
+    get_model,
+    is_supported_model,
+    list_models,
 )
 from .provider import CohereProvider
 from .tokenizer import CohereTokenizer
 
 __all__ = [
     "CohereClient",
+    "CohereClientError",
+    "CohereAuthenticationError",
+    "CohereRateLimitError",
+    "CohereTimeoutError",
+    "CohereUnavailableError",
     "CohereConfig",
     "CohereModelInfo",
     "COHERE_MODELS",
+    "get_model",
+    "is_supported_model",
+    "list_models",
     "CohereProvider",
     "CohereTokenizer",
 ]
-'@ | Set-Content .\ai\providers\llm\cohere\__init__.py

@@ -1,7 +1,6 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from typing import Optional, Type
+from typing import Optional
 
 from ..base.provider import BaseProvider
 from ..constants import ProviderStatus
@@ -12,13 +11,10 @@ from .resolver import ProviderResolver
 
 class ProviderSelector:
     """
-    Selects provider implementations from registry metadata.
+    Selects provider implementations from the legacy AI registry.
 
-    Note:
-        This is provider implementation selection only.
-
-        Intelligent model selection based on cost, latency,
-        quality and request context belongs to routing_engine.
+    Intelligent model selection based on cost, latency, quality and
+    request context belongs to routing_engine.
     """
 
     def __init__(
@@ -26,18 +22,11 @@ class ProviderSelector:
         registry: AIRegistry,
         resolver: ProviderResolver,
     ) -> None:
-
         self.registry = registry
         self.resolver = resolver
 
-    def select(
-        self,
-        provider_id: str,
-    ) -> Type[BaseProvider]:
-
-        metadata = self.registry.providers.get(
-            provider_id
-        )
+    def select(self, provider_id: str) -> type[BaseProvider]:
+        metadata = self.registry.providers.get(provider_id)
 
         if metadata is None:
             raise ValueError(
@@ -49,20 +38,17 @@ class ProviderSelector:
             ProviderStatus.ERROR,
         }:
             raise RuntimeError(
-                f"Provider '{provider_id}' is "
-                f"currently {metadata.status.value}."
+                f"Provider '{provider_id}' is currently "
+                f"{metadata.status.value}."
             )
 
-        return self.resolver.resolve(
-            provider_id
-        )
+        return self.resolver.resolve(provider_id)
 
     def select_metadata(
         self,
         provider_id: str,
     ) -> Optional[ProviderMetadata]:
+        return self.registry.providers.get(provider_id)
 
-        return self.registry.providers.get(
-            provider_id
-        )
-'@ | Set-Content ".\ai\providers\provider_factory\selector.py" -Encoding UTF8
+
+__all__ = ["ProviderSelector"]

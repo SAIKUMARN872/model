@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import random
@@ -14,14 +13,6 @@ T = TypeVar("T")
 
 @dataclass(frozen=True)
 class RetryPolicy:
-    """
-    Retry policy for transient provider failures.
-
-    Designed for ModelNow's provider layer so that
-    individual providers do not need to implement
-    their own retry algorithms.
-    """
-
     max_attempts: int = 3
     base_delay_seconds: float = 0.5
     max_delay_seconds: float = 30.0
@@ -48,17 +39,12 @@ class RetryPolicy:
             )
 
         if self.jitter < 0:
-            raise ValueError("jitter must be >= 0")
+            raise ValueError(
+                "jitter must be >= 0"
+            )
 
 
 class RetryManager:
-    """
-    Async retry manager for ModelNow provider operations.
-
-    Retry decisions are based on exception type and the
-    retryable flag exposed by ProviderError.
-    """
-
     def __init__(
         self,
         policy: RetryPolicy | None = None,
@@ -69,13 +55,12 @@ class RetryManager:
         self,
         operation: Callable[[], Awaitable[T]],
     ) -> T:
-        """
-        Execute an async operation with retry handling.
-        """
-
         last_error: Exception | None = None
 
-        for attempt in range(1, self.policy.max_attempts + 1):
+        for attempt in range(
+            1,
+            self.policy.max_attempts + 1,
+        ):
             try:
                 return await operation()
 
@@ -107,10 +92,6 @@ class RetryManager:
         self,
         exception: Exception,
     ) -> bool:
-        """
-        Determine whether an exception is retryable.
-        """
-
         if isinstance(exception, ProviderError):
             return bool(exception.retryable)
 
@@ -129,11 +110,6 @@ class RetryManager:
         attempt: int,
         exception: Exception,
     ) -> float:
-        """
-        Calculate exponential backoff with optional
-        provider-requested retry_after support.
-        """
-
         retry_after = getattr(
             exception,
             "retry_after",
@@ -154,7 +130,7 @@ class RetryManager:
                     self.policy.max_delay_seconds,
                 )
 
-        exponential_delay = (
+        delay = (
             self.policy.base_delay_seconds
             * (
                 self.policy.exponential_base
@@ -162,18 +138,17 @@ class RetryManager:
             )
         )
 
-        exponential_delay = min(
-            exponential_delay,
+        delay = min(
+            delay,
             self.policy.max_delay_seconds,
         )
 
         if self.policy.jitter > 0:
             jitter_range = (
-                exponential_delay
-                * self.policy.jitter
+                delay * self.policy.jitter
             )
 
-            exponential_delay += random.uniform(
+            delay += random.uniform(
                 -jitter_range,
                 jitter_range,
             )
@@ -181,7 +156,7 @@ class RetryManager:
         return max(
             0.0,
             min(
-                exponential_delay,
+                delay,
                 self.policy.max_delay_seconds,
             ),
         )
@@ -190,13 +165,6 @@ class RetryManager:
         self,
         operation: Callable[[], Awaitable[T]],
     ) -> T:
-        """
-        Alias for execute().
-
-        Useful for provider adapters that prefer
-        retry_manager.run(...).
-        """
-
         return await self.execute(operation)
 
 
@@ -204,4 +172,3 @@ __all__ = [
     "RetryPolicy",
     "RetryManager",
 ]
-'@ | Set-Content ".\ai\providers\base\retry.py" -Encoding UTF8

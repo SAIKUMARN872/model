@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+DEFAULT_TIMEOUT_SECONDS = 60.0
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_MAX_BATCH_SIZE = 8
+
+SUPPORTED_BACKENDS = (
+    "transformers",
+    "vllm",
+)
+
+__all__ = [
+    "DEFAULT_TIMEOUT_SECONDS",
+    "DEFAULT_MAX_RETRIES",
+    "DEFAULT_MAX_BATCH_SIZE",
+    "SUPPORTED_BACKENDS",
+]

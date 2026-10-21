@@ -1,4 +1,3 @@
-@'
 from __future__ import annotations
 
 from typing import Any, Iterable
@@ -8,8 +7,7 @@ class GoogleTokenizer:
     """
     Lightweight pre-request token estimator.
 
-    Exact token usage is taken from Gemini usageMetadata whenever
-    the provider returns it.
+    Exact token counts come from Google usage metadata.
     """
 
     def estimate_text(
@@ -49,13 +47,9 @@ class GoogleTokenizer:
 
             return total
 
-        if isinstance(content, dict):
-            text = content.get("text")
-
-            if isinstance(text, str):
-                return self.estimate_text(text)
-
-        return self.estimate_text(str(content))
+        return self.estimate_text(
+            str(content)
+        )
 
     def estimate_messages(
         self,
@@ -68,7 +62,9 @@ class GoogleTokenizer:
                 content = message.content
 
             elif isinstance(message, dict):
-                content = message.get("content")
+                content = message.get(
+                    "content"
+                )
 
             else:
                 content = str(message)
@@ -78,4 +74,6 @@ class GoogleTokenizer:
             )
 
         return total
-'@ | Set-Content ".\ai\providers\llm\google\tokenizer.py" -Encoding UTF8
+
+
+__all__ = ["GoogleTokenizer"]

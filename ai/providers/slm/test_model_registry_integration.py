@@ -1,136 +1,165 @@
-﻿import sys
-from pathlib import Path
+import asyncio
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-
-from ai.model_registry import ModelRegistryEngine
+from ai.model_registry.engine import ModelRegistryEngine
 from ai.model_registry.utils import model_info_to_record
+
 from ai.providers.slm import (
     GemmaProvider,
     LlamaProvider,
     MistralProvider,
-    SLMProviderRegistry,
+    PhiProvider,
+    QwenProvider,
+    SmolLMProvider,
+    TinyLlamaProvider,
 )
 
 
-def main() -> None:
-    provider_registry = SLMProviderRegistry()
+async def main() -> None:
+    registry = ModelRegistryEngine()
 
-    provider_registry.register_many(
-        [
-            GemmaProvider(),
-            LlamaProvider(),
-            MistralProvider(),
-        ]
-    )
+    providers = [
+        GemmaProvider(),
+        LlamaProvider(),
+        MistralProvider(),
+        PhiProvider(),
+        QwenProvider(),
+        SmolLMProvider(),
+        TinyLlamaProvider(),
+    ]
 
-    model_registry = ModelRegistryEngine()
+    all_records = []
 
-    registered = 0
-
-    for provider in provider_registry.providers():
-        provider_id = provider.config.provider_id
-
-        if provider_id == "gemma":
-            from ai.providers.slm.gemma.models import GEMMA_MODELS
-
-            models = GEMMA_MODELS
-
-        elif provider_id == "llama":
-            from ai.providers.slm.llama.models import LLAMA_MODELS
-
-            models = LLAMA_MODELS
-
-        elif provider_id == "mistral":
-            from ai.providers.slm.mistral.models import MISTRAL_MODELS
-
-            models = MISTRAL_MODELS
-
-        else:
-            models = []
+    for provider in providers:
+        models = await provider.list_models()
 
         for model in models:
-            record = model_info_to_record(model)
-
-            model_registry.register(record)
-
-            registered += 1
-
-            print(
-                "REGISTERED:",
-                record.qualified_id,
-                "| TIER:",
-                record.tier.value,
-                "| CONTEXT:",
-                record.context_window,
-                "| QUALITY:",
-                record.quality_score,
+            all_records.append(
+                model_info_to_record(model)
             )
 
-    print("PROVIDERS:", model_registry.providers())
-    print("TOTAL REGISTERED:", registered)
-    print("REGISTRY COUNT:", model_registry.count())
-
-    assert registered == 5
-    assert model_registry.count() == 5
-
-    assert "gemma" in model_registry.providers()
-    assert "llama" in model_registry.providers()
-    assert "mistral" in model_registry.providers()
-
-    canonical_models = model_registry.list_models()
-
-    gemma = next(
-        (
-            model
-            for model in canonical_models
-            if model.model_id == "google/gemma-3-1b-it"
-        ),
-        None,
+    records = registry.register_many(
+        all_records
     )
 
-    llama = next(
-        (
-            model
-            for model in canonical_models
-            if model.model_id
-            == "meta-llama/Llama-3.2-1B-Instruct"
-        ),
-        None,
+    for record in records:
+        print(
+            "REGISTERED:",
+            record.qualified_id,
+            "| TIER:",
+            record.tier,
+            "| CONTEXT:",
+            record.context_window,
+            "| QUALITY:",
+            record.quality_score,
+        )
+
+    print("PROVIDERS:", registry.providers())
+    print("TOTAL REGISTERED:", len(records))
+    print("REGISTRY COUNT:", registry.count())
+
+    gemma = registry.get(
+        "gemma",
+        "google/gemma-3-1b-it",
     )
 
-    mistral = next(
-        (
-            model
-            for model in canonical_models
-            if model.model_id
-            == "mistralai/Mistral-7B-Instruct-v0.3"
-        ),
-        None,
+    llama = registry.get(
+        "llama",
+        "meta-llama/Llama-3.2-1B-Instruct",
     )
+
+    mistral = registry.get(
+        "mistral",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+    )
+
+    phi = registry.get(
+        "phi",
+        "microsoft/Phi-3-mini-4k-instruct",
+    )
+
+    qwen = registry.get(
+        "qwen",
+        "Qwen/Qwen2.5-0.5B-Instruct",
+    )
+
+    smollm = registry.get(
+        "smollm",
+        "HuggingFaceTB/SmolLM-135M-Instruct",
+    )
+
+    tinyllama = registry.get(
+        "tinyllama",
+        "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    )
+
+    print(
+        "GEMMA CANONICAL RECORD:",
+        "PASS" if gemma is not None else "FAIL",
+    )
+
+    print(
+        "LLAMA CANONICAL RECORD:",
+        "PASS" if llama is not None else "FAIL",
+    )
+
+    print(
+        "MISTRAL CANONICAL RECORD:",
+        "PASS" if mistral is not None else "FAIL",
+    )
+
+    print(
+        "PHI CANONICAL RECORD:",
+        "PASS" if phi is not None else "FAIL",
+    )
+
+    print(
+        "QWEN CANONICAL RECORD:",
+        "PASS" if qwen is not None else "FAIL",
+    )
+
+    print(
+        "SMOLLM CANONICAL RECORD:",
+        "PASS" if smollm is not None else "FAIL",
+    )
+
+    print(
+        "TINYLLAMA CANONICAL RECORD:",
+        "PASS" if tinyllama is not None else "FAIL",
+    )
+
+    assert len(records) == 11
+    assert registry.count() == 11
 
     assert gemma is not None
     assert llama is not None
     assert mistral is not None
+    assert phi is not None
+    assert qwen is not None
+    assert smollm is not None
+    assert tinyllama is not None
 
-    assert gemma.provider == "gemma"
-    assert llama.provider == "llama"
-    assert mistral.provider == "mistral"
+    assert qwen.provider == "qwen"
+    assert qwen.model_id == (
+        "Qwen/Qwen2.5-0.5B-Instruct"
+    )
+    assert qwen.tier.value == "slm"
+    assert qwen.context_window == 32768
 
-    assert gemma.tier.value == "slm"
-    assert llama.tier.value == "slm"
-    assert mistral.tier.value == "slm"
+    assert smollm.provider == "smollm"
+    assert smollm.model_id == (
+        "HuggingFaceTB/SmolLM-135M-Instruct"
+    )
+    assert smollm.tier.value == "slm"
+    assert smollm.context_window == 2048
 
-    print("GEMMA CANONICAL RECORD: PASS")
-    print("LLAMA CANONICAL RECORD: PASS")
-    print("MISTRAL CANONICAL RECORD: PASS")
-    print("SLM → MODEL REGISTRY TEST: PASS")
+    assert tinyllama.provider == "tinyllama"
+    assert tinyllama.model_id == (
+        "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    )
+    assert tinyllama.tier.value == "slm"
+    assert tinyllama.context_window == 2048
+
+    print("SLM ? MODEL REGISTRY TEST: PASS")
 
 
-if __name__ == "__main__":
-    main()
+asyncio.run(main())

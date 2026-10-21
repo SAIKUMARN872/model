@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import RLock
 from typing import Type
 
-from ai.providers.base.models import (
-    Capability,
+from ai.providers.constants import (
+    ModelCapability,
     ProviderType,
 )
 from ai.providers.base.provider import BaseProvider
@@ -18,21 +18,13 @@ class ProviderMetadata:
 
     display_name: str | None = None
 
-    capabilities: frozenset[Capability] = frozenset()
+    capabilities: frozenset[ModelCapability] = frozenset()
 
     priority: int = 100
 
     enabled: bool = True
 
-    metadata: dict = None
-
-    def __post_init__(self):
-        if self.metadata is None:
-            object.__setattr__(
-                self,
-                "metadata",
-                {},
-            )
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -291,7 +283,7 @@ class ProviderRegistry:
 
     def find_by_capability(
         self,
-        capability: Capability,
+        capability: ModelCapability,
     ) -> list[ProviderEntry]:
 
         return [

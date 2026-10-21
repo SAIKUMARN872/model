@@ -5,11 +5,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from providers.base.config import ProviderConfig
-from providers.base.request import ChatMessage, ChatRequest
-from providers.llm.openai.client import OpenAIClient
-from providers.llm.openai.config import OpenAIConfig
-from providers.llm.openai.stream import OpenAIStream
+from ai.providers.base.config import ProviderConfig
+from ai.providers.base.request import ChatMessage, ChatRequest
+from ai.providers.llm.openai.client import OpenAIClient
+from ai.providers.llm.openai.config import OpenAIConfig
+from ai.providers.llm.openai.stream import OpenAIStream
 
 
 class TestOpenAIMockStream(unittest.TestCase):

@@ -1,5 +1,4 @@
-@'
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
@@ -146,4 +145,3 @@ __all__ = [
     "BaseTokenizer",
     "estimate_tokens",
 ]
-'@ | Set-Content ".\ai\providers\base\tokenizer.py" -Encoding UTF8

@@ -1,42 +1,66 @@
-@'
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+import os
 
 
 @dataclass(frozen=True)
 class GoogleConfig:
-    api_key: str
-    base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    timeout: int = 60
+    provider_id: str = "google"
+    api_key: str | None = None
+    base_url: str = "https://generativelanguage.googleapis.com"
+    timeout_seconds: float = 120.0
     max_retries: int = 3
+    client_name: str = "modelnow"
+    enabled: bool = True
 
     @classmethod
-    def from_environment(cls) -> "GoogleConfig":
+    def from_env(cls) -> "GoogleConfig":
         return cls(
-            api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+            provider_id="google",
+            api_key=os.getenv("GOOGLE_API_KEY")
+            or os.getenv("GEMINI_API_KEY"),
             base_url=os.getenv(
-                "GEMINI_BASE_URL",
-                "https://generativelanguage.googleapis.com/v1beta",
+                "GOOGLE_BASE_URL",
+                "https://generativelanguage.googleapis.com",
             ).rstrip("/"),
-            timeout=int(os.getenv("GEMINI_TIMEOUT", "60")),
-            max_retries=int(os.getenv("GEMINI_MAX_RETRIES", "3")),
-        )
-
-    def generate_url(self, model: str) -> str:
-        return (
-            f"{self.base_url}/models/"
-            f"{model}:generateContent"
-        )
-
-    def stream_url(self, model: str) -> str:
-        return (
-            f"{self.base_url}/models/"
-            f"{model}:streamGenerateContent"
+            timeout_seconds=float(
+                os.getenv("GOOGLE_TIMEOUT_SECONDS", "120")
+            ),
+            max_retries=int(
+                os.getenv("GOOGLE_MAX_RETRIES", "3")
+            ),
+            client_name=os.getenv(
+                "GOOGLE_CLIENT_NAME",
+                "modelnow",
+            ),
+            enabled=os.getenv(
+                "GOOGLE_ENABLED",
+                "true",
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
         )
 
     @property
-    def models_url(self) -> str:
-        return f"{self.base_url}/models"
-'@ | Set-Content ".\ai\providers\llm\google\config.py" -Encoding UTF8
+    def configured(self) -> bool:
+        return bool(
+            self.api_key
+            and self.base_url
+        )
+
+    def client_kwargs(self) -> dict:
+        result = {
+            "timeout": self.timeout_seconds,
+            "max_retries": self.max_retries,
+        }
+
+        if self.api_key:
+            result["api_key"] = self.api_key
+
+        if self.base_url:
+            result["base_url"] = self.base_url
+
+        return result
+
+
+__all__ = ["GoogleConfig"]

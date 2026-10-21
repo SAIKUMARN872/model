@@ -1,10 +1,10 @@
-from model_registry.models import (
+﻿from ai.model_registry.models import (
     ModelRecord,
     ModelTier,
     ModelCapabilities,
     ModelPricing,
 )
-from model_registry.registry.manager import ModelRegistryManager
+from ai.model_registry.registry.manager import ModelRegistryManager
 
 
 def main():
@@ -67,3 +67,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
