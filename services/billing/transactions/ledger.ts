@@ -1,6 +1,5 @@
 ﻿import type {
     Transaction,
-    TransactionType
 } from "../models.js";
 import { clone } from "../utils.js";
 import {
@@ -13,7 +12,7 @@ export class TransactionLedger {
 
     record(
         customerId: string,
-        type: TransactionType,
+        type: Transaction["type"],
         amount: number,
         currency: string,
         referenceId?: string,

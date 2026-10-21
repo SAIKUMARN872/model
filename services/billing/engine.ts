@@ -1,8 +1,6 @@
 ﻿import type {
     BillingCustomer,
-    CustomerInput,
     Plan,
-    PlanInput,
     Subscription,
     Invoice,
     InvoiceLine,
@@ -89,6 +87,9 @@ import {
 import {
     BillingDatabaseConnection
 } from "./database/connection.js";
+
+type CustomerInput = Parameters<CustomerManager["create"]>[0];
+type PlanInput = Parameters<PlanCatalog["create"]>[0];
 
 export class BillingEngine {
     readonly config: BillingConfig;

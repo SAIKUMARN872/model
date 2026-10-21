@@ -56,6 +56,10 @@ export class UserManager {
         return user ? toPublicUser(user) : undefined
     }
 
+    getById(id: string): PublicUser | undefined {
+        return this.findById(id)
+    }
+
     findByEmail(email: string): PublicUser | undefined {
         const user = this.repository.findByEmail(email)
         return user ? toPublicUser(user) : undefined
@@ -88,12 +92,62 @@ export class UserManager {
         return toPublicUser(updated)
     }
 
+    addRole(id: string, role: string): PublicUser {
+        if (!role.trim()) {
+            throw new Error("Role is required")
+        }
+
+        const user = this.repository.findById(id)
+
+        if (!user) {
+            throw new Error("User not found")
+        }
+
+        if (user.roles.includes(role)) {
+            return toPublicUser(user)
+        }
+
+        return this.update(id, { roles: [...user.roles, role] })
+    }
+
+    removeRole(id: string, role: string): PublicUser {
+        const user = this.repository.findById(id)
+
+        if (!user) {
+            throw new Error("User not found")
+        }
+
+        return this.update(
+            id,
+            { roles: user.roles.filter((existingRole) => existingRole !== role) }
+        )
+    }
+
+    recordLogin(id: string): PublicUser {
+        const user = this.repository.findById(id)
+
+        if (!user) {
+            throw new Error("User not found")
+        }
+
+        return toPublicUser(
+            this.repository.update(id, {
+                lastLoginAt: new Date(),
+                updatedAt: new Date()
+            })
+        )
+    }
+
     delete(id: string): boolean {
         return this.repository.delete(id)
     }
 
     list(): PublicUser[] {
         return this.repository.list().map(toPublicUser)
+    }
+
+    clear(): void {
+        this.repository.clear()
     }
 }
 

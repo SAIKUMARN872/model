@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+
 import {
   AgentManagementError,
   AgentManagementService,
@@ -16,17 +18,20 @@ const agent = await service.create({
     provider: "openai",
     model: "gpt-test",
   },
-  tools: ["search", "calculator"],
+  tools: [
+    { name: "search", enabled: true },
+    { name: "calculator", enabled: true },
+  ],
   metadata: {
     environment: "test",
   },
 });
 
-console.assert(agent.id.length > 0, "create agent: id");
-console.assert(agent.tenantId === "tenant_test_1", "create agent: tenantId");
-console.assert(agent.name === "Test Agent", "create agent: name");
-console.assert(agent.status === "draft", "create agent: status");
-console.assert(agent.version === 1, "create agent: version");
+assert(agent.id.length > 0, "create agent: id");
+assert.equal(agent.tenantId, "tenant_test_1", "create agent: tenantId");
+assert.equal(agent.name, "Test Agent", "create agent: name");
+assert.equal(agent.status, "draft", "create agent: status");
+assert.equal(agent.version, 1, "create agent: version");
 console.log("? create agent");
 
 const fetched = await service.getById(
@@ -34,16 +39,16 @@ const fetched = await service.getById(
   agent.id,
 );
 
-console.assert(fetched.id === agent.id, "get agent");
-console.assert(fetched.name === "Test Agent", "get agent name");
+assert.equal(fetched.id, agent.id, "get agent");
+assert.equal(fetched.name, "Test Agent", "get agent name");
 console.log("? get agent");
 
 const listed = await service.list({
   tenantId: "tenant_test_1",
 });
 
-console.assert(listed.length === 1, "list agents");
-console.assert(listed[0].id === agent.id, "list agent id");
+assert.equal(listed.length, 1, "list agents");
+assert.equal(listed[0]?.id, agent.id, "list agent id");
 console.log("? list agents");
 
 const updated = await service.update(
@@ -55,12 +60,14 @@ const updated = await service.update(
   },
 );
 
-console.assert(
-  updated.description === "Updated test agent",
+assert.equal(
+  updated.description,
+  "Updated test agent",
   "update agent description",
 );
-console.assert(
-  updated.version === 2,
+assert.equal(
+  updated.version,
+  2,
   "update agent version",
 );
 console.log("? update agent");
@@ -71,16 +78,18 @@ const published = await service.publish(
   updated.version,
 );
 
-console.assert(
-  published.status === "active",
+assert.equal(
+  published.status,
+  "active",
   "publish agent status",
 );
-console.assert(
-  published.version === 3,
+assert.equal(
+  published.version,
+  3,
   "publish agent version",
 );
-console.assert(
-  published.publishedAt !== undefined,
+assert.ok(
+  published.publishedAt,
   "publish agent timestamp",
 );
 console.log("? publish agent");
@@ -97,11 +106,11 @@ try {
 
   throw new Error("Expected active agent update error");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "active agent update protection",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "AGENT_NOT_EDITABLE",
     "active agent update error code",
@@ -122,11 +131,11 @@ try {
 
   throw new Error("Expected duplicate name error");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "duplicate agent name protection",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "AGENT_NAME_CONFLICT",
     "duplicate agent name error code",
@@ -142,11 +151,11 @@ try {
 
   throw new Error("Expected missing agent error");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "missing agent handling",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "AGENT_NOT_FOUND",
     "missing agent error code",
@@ -167,11 +176,11 @@ try {
 
   throw new Error("Expected validation error");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "invalid tenant validation",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "VALIDATION_ERROR",
     "invalid tenant error code",
@@ -187,11 +196,11 @@ try {
 
   throw new Error("Expected invalid limit error");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "invalid limit validation",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "VALIDATION_ERROR",
     "invalid limit error code",
@@ -199,10 +208,20 @@ try {
 }
 console.log("? invalid limit validation");
 
+const versionConflictAgent = await service.create({
+  tenantId: "tenant_test_1",
+  name: "Version Conflict Test Agent",
+  instructions: "Version conflict test",
+  model: {
+    provider: "openai",
+    model: "gpt-test",
+  },
+});
+
 try {
   await service.update(
     "tenant_test_1",
-    agent.id,
+    versionConflictAgent.id,
     999,
     {
       description: "Wrong version",
@@ -211,11 +230,11 @@ try {
 
   throw new Error("Expected version conflict error");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "version conflict handling",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "VERSION_CONFLICT",
     "version conflict error code",
@@ -239,12 +258,13 @@ const archived = await service.archive(
   archiveAgent.version,
 );
 
-console.assert(
-  archived.status === "archived",
+assert.equal(
+  archived.status,
+  "archived",
   "archive agent status",
 );
-console.assert(
-  archived.archivedAt !== undefined,
+assert.ok(
+  archived.archivedAt,
   "archive agent timestamp",
 );
 console.log("? archive agent");
@@ -254,7 +274,7 @@ const deleted = await service.delete(
   archiveAgent.id,
 );
 
-console.assert(deleted === true, "delete agent");
+assert.equal(deleted, true, "delete agent");
 console.log("? delete agent");
 
 try {
@@ -265,11 +285,11 @@ try {
 
   throw new Error("Expected deleted agent to be missing");
 } catch (error) {
-  console.assert(
+  assert(
     error instanceof AgentManagementError,
     "verify deletion",
   );
-  console.assert(
+  assert(
     (error as AgentManagementError).code ===
       "AGENT_NOT_FOUND",
     "verify deletion error code",

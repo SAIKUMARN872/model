@@ -11,7 +11,7 @@ import {
 
 import {
   userService,
-} from "../users/user.js";
+} from "../users/manager.js";
 
 function assert(
   condition: boolean,
@@ -37,6 +37,7 @@ const profileController = new ProfileController();
  */
 const user = userService.create({
   email: "api-test@example.com",
+  passwordHash: "test-only-password-hash",
   name: "API Test User",
   roles: ["user"],
 });
@@ -401,4 +402,3 @@ assert(
 );
 
 console.log("All authentication API tests passed.");
-

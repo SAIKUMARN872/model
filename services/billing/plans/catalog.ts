@@ -1,6 +1,5 @@
 ﻿import type {
-    Plan,
-    PlanInput
+    Plan
 } from "../models.js";
 import {
     NotFoundException
@@ -8,6 +7,10 @@ import {
 import { clone, money } from "../utils.js";
 import { PlanModel } from "./plan.js";
 import { PlanValidator } from "./validator.js";
+
+type PlanInput = ConstructorParameters<
+    typeof PlanModel
+>[0];
 
 export class PlanCatalog {
     private readonly plans =

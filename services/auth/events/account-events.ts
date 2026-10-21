@@ -46,7 +46,7 @@ function cloneEvent(event: AccountEvent): AccountEvent {
   return {
     ...event,
     timestamp: new Date(event.timestamp),
-    metadata: { ...event.metadata },
+    metadata: structuredClone(event.metadata),
   };
 }
 
@@ -68,9 +68,7 @@ export class AccountEventService {
       accountId: input.accountId,
       userId: input.userId,
       timestamp: new Date(),
-      metadata: {
-        ...(input.metadata ?? {}),
-      },
+      metadata: structuredClone(input.metadata ?? {}),
     };
 
     this.events.push(event);

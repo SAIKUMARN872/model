@@ -1283,7 +1283,7 @@ await agentEventBus.publish({
 
 check(
   "agent event publish",
-  receivedAgentEvent === true,
+  Boolean(receivedAgentEvent),
 );
 
 unsubscribeAgent();
@@ -1355,7 +1355,7 @@ await workflowEventBus.publish({
 
 check(
   "workflow event publish",
-  receivedWorkflowEvent === true,
+  Boolean(receivedWorkflowEvent),
 );
 
 

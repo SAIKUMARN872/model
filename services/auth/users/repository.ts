@@ -46,4 +46,8 @@ export class UserRepository {
     list(): User[] {
         return [...this.users.values()]
     }
+
+    clear(): void {
+        this.users.clear()
+    }
 }

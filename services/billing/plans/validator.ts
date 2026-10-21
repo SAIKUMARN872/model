@@ -1,15 +1,26 @@
-﻿import type { Plan, PlanInput } from "../models.js";
+﻿import type { Plan } from "../models.js";
 import { ValidationException } from "../exceptions.js";
+
+type PlanInput = Pick<Plan, "name" | "price"> &
+    Partial<Pick<
+        Plan,
+        | "description"
+        | "currency"
+        | "interval"
+        | "trialDays"
+        | "metadata"
+    >>;
 
 export class PlanValidator {
     validate(input: PlanInput): void {
-        if (!input.name.trim()) {
+        if (!input.name?.trim()) {
             throw new ValidationException(
                 "Plan name is required"
             );
         }
 
         if (
+            input.price === undefined ||
             !Number.isFinite(input.price) ||
             input.price <= 0
         ) {

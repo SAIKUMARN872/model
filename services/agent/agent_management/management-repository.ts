@@ -1,89 +1,119 @@
-import {
-  Agent,
-  CreateAgentInput,
-  UpdateAgentInput,
+import type {
+  AgentFilters,
+  AgentRecord,
 } from "./management-schema.js";
 
-export interface AgentManagementRepository {
-  create(input: CreateAgentInput): Agent;
-  findById(id: string): Agent | undefined;
-  findAll(): Agent[];
-  update(id: string, input: UpdateAgentInput): Agent | undefined;
-  delete(id: string): boolean;
-  exists(id: string): boolean;
+type AgentChanges = Partial<
+  Omit<AgentRecord, "id" | "tenantId" | "createdAt">
+>;
+
+export interface AgentRepository {
+  create(agent: AgentRecord): Promise<AgentRecord>;
+  findById(
+    tenantId: string,
+    id: string,
+  ): Promise<AgentRecord | undefined>;
+  findAll(filters: AgentFilters): Promise<AgentRecord[]>;
+  update(
+    tenantId: string,
+    id: string,
+    expectedVersion: number,
+    changes: AgentChanges,
+  ): Promise<AgentRecord | undefined>;
+  delete(tenantId: string, id: string): Promise<boolean>;
 }
 
-export class InMemoryAgentManagementRepository
-  implements AgentManagementRepository
-{
-  private readonly agents = new Map<string, Agent>();
+export class InMemoryAgentRepository implements AgentRepository {
+  private readonly agents = new Map<string, AgentRecord>();
 
-  create(input: CreateAgentInput): Agent {
-    const now = new Date().toISOString();
-
-    const agent: Agent = {
-      id: `agent_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-      name: input.name,
-      description: input.description,
-      status: input.status ?? "active",
-      ownerId: input.ownerId,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.agents.set(agent.id, agent);
-
-    return { ...agent };
+  async create(agent: AgentRecord): Promise<AgentRecord> {
+    const copy = structuredClone(agent);
+    this.agents.set(copy.id, copy);
+    return structuredClone(copy);
   }
 
-  findById(id: string): Agent | undefined {
+  async findById(
+    tenantId: string,
+    id: string,
+  ): Promise<AgentRecord | undefined> {
     const agent = this.agents.get(id);
 
-    return agent ? { ...agent } : undefined;
-  }
-
-  findAll(): Agent[] {
-    return Array.from(this.agents.values()).map((agent) => ({
-      ...agent,
-    }));
-  }
-
-  update(
-    id: string,
-    input: UpdateAgentInput,
-  ): Agent | undefined {
-    const existing = this.agents.get(id);
-
-    if (!existing) {
+    if (!agent || agent.tenantId !== tenantId) {
       return undefined;
     }
 
-    const updated: Agent = {
-      ...existing,
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.description !== undefined
-        ? { description: input.description }
-        : {}),
-      ...(input.status !== undefined
-        ? { status: input.status }
-        : {}),
-      ...(input.ownerId !== undefined
-        ? { ownerId: input.ownerId }
-        : {}),
-      updatedAt: new Date().toISOString(),
+    return structuredClone(agent);
+  }
+
+  async findAll(filters: AgentFilters): Promise<AgentRecord[]> {
+    const search = filters.search?.trim().toLowerCase();
+
+    return [...this.agents.values()]
+      .filter((agent) => agent.tenantId === filters.tenantId)
+      .filter(
+        (agent) =>
+          filters.status === undefined ||
+          agent.status === filters.status,
+      )
+      .filter(
+        (agent) =>
+          filters.provider === undefined ||
+          agent.model.provider === filters.provider,
+      )
+      .filter(
+        (agent) =>
+          search === undefined ||
+          search.length === 0 ||
+          [agent.name, agent.description, agent.instructions]
+            .some((value) => value?.toLowerCase().includes(search)),
+      )
+      .slice(filters.offset ?? 0)
+      .slice(
+        0,
+        filters.limit ?? Number.POSITIVE_INFINITY,
+      )
+      .map((agent) => structuredClone(agent));
+  }
+
+  async update(
+    tenantId: string,
+    id: string,
+    expectedVersion: number,
+    changes: AgentChanges,
+  ): Promise<AgentRecord | undefined> {
+    const current = this.agents.get(id);
+
+    if (
+      !current ||
+      current.tenantId !== tenantId ||
+      current.version !== expectedVersion
+    ) {
+      return undefined;
+    }
+
+    const updated: AgentRecord = {
+      ...current,
+      ...structuredClone(changes),
+      id: current.id,
+      tenantId: current.tenantId,
+      createdAt: current.createdAt,
+      updatedAt: changes.updatedAt ?? new Date().toISOString(),
     };
 
     this.agents.set(id, updated);
-
-    return { ...updated };
+    return structuredClone(updated);
   }
 
-  delete(id: string): boolean {
+  async delete(
+    tenantId: string,
+    id: string,
+  ): Promise<boolean> {
+    const current = this.agents.get(id);
+
+    if (!current || current.tenantId !== tenantId) {
+      return false;
+    }
+
     return this.agents.delete(id);
   }
-
-  exists(id: string): boolean {
-    return this.agents.has(id);
-  }
 }
-

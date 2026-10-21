@@ -1,4 +1,4 @@
-﻿import { type UpdateUserInput } from "../users/user.js";
+import { type PublicUser, type UpdateUserInput } from "../users/user.js";
 import { userService } from "../users/manager.js";
 
 export interface ProfileResponse {
@@ -147,7 +147,7 @@ export class ProfileController {
     }
   }
 
-  private toProfile(user: User): ProfileResponse {
+  private toProfile(user: PublicUser): ProfileResponse {
     return {
       id: user.id,
       email: user.email,
@@ -176,5 +176,4 @@ export class ProfileController {
 
 export const profileController =
   new ProfileController();
-
 
