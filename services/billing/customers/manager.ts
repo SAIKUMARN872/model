@@ -1,6 +1,5 @@
 ﻿import type {
-    BillingCustomer,
-    CustomerInput
+    BillingCustomer
 } from "../models.js";
 import { Customer } from "./customer.js";
 import {
@@ -8,6 +7,9 @@ import {
     ValidationException
 } from "../exceptions.js";
 import { clone } from "../utils.js";
+
+type CustomerInput =
+    ConstructorParameters<typeof Customer>[0];
 
 export class CustomerManager {
     private readonly customers =

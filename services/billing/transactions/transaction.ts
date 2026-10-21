@@ -1,9 +1,8 @@
 ﻿import { randomUUID } from "node:crypto";
-import type {
-    TransactionType,
-    Transaction
-} from "../models.js";
+import type { Transaction } from "../models.js";
 import { money } from "../utils.js";
+
+type TransactionType = Transaction["type"];
 
 export function createTransaction(
     customerId: string,

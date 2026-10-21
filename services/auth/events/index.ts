@@ -1,11 +1,11 @@
-﻿export * from "./auth-events.js"
+export * from "./account-events.js"
 export * from "./session-events.js"
 
 export {
-    AccountEventService
+    AccountEventService as AuthEventService
 } from "./auth-events.js"
 
 export type {
-    AccountEventType,
-    AccountEvent
+    AccountEvent as AuthEvent,
+    AccountEventType as AuthEventType
 } from "./auth-events.js"

@@ -1,8 +1,9 @@
 ﻿import type {
-    Plan,
-    PlanInput
+    Plan
 } from "../models.js";
 import { PlanCatalog } from "../plans/catalog.js";
+
+type PlanInput = Parameters<PlanCatalog["create"]>[0];
 
 export class PlanService {
     constructor(

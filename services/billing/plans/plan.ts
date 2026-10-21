@@ -1,10 +1,19 @@
 ﻿import { randomUUID } from "node:crypto";
-import type {
-    Plan,
-    PlanInput
-} from "../models.js";
+import type { Plan } from "../models.js";
 import { clone, money } from "../utils.js";
 import { PlanValidator } from "./validator.js";
+
+type PlanInput = Pick<Plan, "name" | "price"> &
+    Partial<
+        Pick<
+            Plan,
+            | "description"
+            | "currency"
+            | "interval"
+            | "trialDays"
+            | "metadata"
+        >
+    >;
 
 export class PlanModel {
     private readonly value: Plan;

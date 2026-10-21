@@ -1,4 +1,4 @@
-﻿import type { EnterpriseAgent } from "../enterprise/enterprise-agent-schema.js";
+import type { EnterpriseAgent } from "../enterprise/enterprise-agent-schema.js";
 
 export type AgentEventType =
   | "agent.created"
@@ -56,4 +56,3 @@ export class AgentEventBus {
 }
 
 export const agentEventBus = new AgentEventBus();
-

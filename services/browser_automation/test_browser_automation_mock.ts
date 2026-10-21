@@ -280,13 +280,14 @@ test("credential manager and resolver", () => {
 
   const credential = resolver.resolve("github");
 
+  assert.ok(credential);
   assert.equal(
-    credential.username,
+    credential!.username,
     "demo"
   );
 
   assert.equal(
-    credential.password,
+    credential!.password,
     "password"
   );
 });
@@ -306,8 +307,11 @@ test("download manager", () => {
     "example.txt"
   );
 
+  const savedDownload = manager.get(download.id);
+
+  assert.ok(savedDownload);
   assert.equal(
-    manager.get(download.id).content,
+    savedDownload!.content,
     "hello"
   );
 });

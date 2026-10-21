@@ -15,6 +15,8 @@ import {
 import type {
   CreateWorkflowInput,
   UpdateWorkflowInput,
+  WorkflowStatus,
+  WorkflowStep,
   Workflow,
 } from "./workflow-schema.js";
 
@@ -275,4 +277,3 @@ export type {
   WorkflowStatus,
   WorkflowStep,
 };
-

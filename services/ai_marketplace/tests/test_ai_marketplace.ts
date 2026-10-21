@@ -8,7 +8,7 @@ import {
 } from "../shared/errors.js";
 
 import {
-  PayoutRepository,
+  InMemoryPayoutRepository,
   PayoutService
 } from "../developer_payouts/index.js";
 
@@ -53,7 +53,7 @@ async function runStep(
 }
 
 test("AI Marketplace complete mock test", async () => {
-  const payoutRepository = new PayoutRepository();
+  const payoutRepository = new InMemoryPayoutRepository();
   const payoutService = new PayoutService(payoutRepository);
 
   const installationRepository = new InstallationRepository();
