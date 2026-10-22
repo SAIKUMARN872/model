@@ -3,20 +3,27 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=.env --import tsx --watch src/main.ts",
     "build": "tsc",
-    "start": "node dist/main.js"
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/main.js",
+    "test": "tsx --test src/app.test.ts src/clients/http.client.test.ts src/api/api-context.test.ts src/api/version.test.ts src/middleware/authentication.test.ts src/middleware/cors.test.ts src/middleware/error-handler.test.ts src/auth/security.test.ts src/auth/jwt.test.ts src/middleware/authorization.test.ts src/middleware/rate-limit.test.ts src/middleware/redis-rate-limit-store.test.ts src/middleware/redis-rate-limit-middleware.test.ts src/routes/domain.routes.test.ts src/controllers/controller-factory.test.ts src/telemetry/telemetry.test.ts src/utils/pagination.test.ts src/utils/dates.test.ts src/utils/ids.test.ts src/webhooks/webhook.security.test.ts src/database/database.test.ts src/database/runtime.test.ts src/database/migrate.test.ts",
+    "db:migrate": "node --env-file-if-exists=../../.env --import tsx src/database/migrate.ts up",
+    "db:seed": "node --env-file-if-exists=../../.env --import tsx src/database/migrate.ts seed"
   },
   "dependencies": {
-    "express": "^5.1.0",
     "cors": "^2.8.5",
+    "express": "^5.1.0",
     "helmet": "^8.1.0",
+    "jose": "^6.2.12",
+    "pg": "^8.23.1",
+    "redis": "^6.3.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

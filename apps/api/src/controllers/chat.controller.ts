@@ -1,95 +1,89 @@
-import type { Request, Response } from "express";
-import { routePrompt, RoutingError } from "../services/routing/routing-service.js";
-import { executionService } from "../services/execution/index.js";
-import type { ExecutionRequest } from "../services/execution/execution-types.js";
+import { z } from "zod";
+import type { RequestHandler } from "express";
+import { ApiError } from "../errors/api.error.js";
+import type { AuthenticatedPrincipal } from "../types/request.types.js";
 
-export async function chatController(req: Request, res: Response) {
-  try {
-    const message = req.body?.message;
+const chatRequestSchema = z.object({
+  message: z.string().trim().min(1).max(100_000),
+}).strict();
 
-    if (typeof message !== "string" || message.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Message is required.",
-      });
-    }
+export type ChatPrincipal = AuthenticatedPrincipal;
 
-    const policy = {
-      prioritize:
-        req.body?.prioritize === "cost" ||
-        req.body?.prioritize === "latency" ||
-        req.body?.prioritize === "quality" ||
-        req.body?.prioritize === "balanced"
-          ? req.body.prioritize
-          : "balanced",
-    } as const;
-
-    const route = await routePrompt(message, policy);
-
-    const executionRequest: ExecutionRequest = {
-      model: route.model,
-      messages: [
-        {
-          role: "user",
-          content: message,
-        },
-      ],
-      timeoutMs: 120000,
-    };
-
-    const execution = await executionService.execute(
-      route.provider,
-      executionRequest,
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: execution.content,
-      routing: route.routing,
-      classification: route.classification,
-      model: route.model,
-      execution,
-      candidates: route.candidates,
-      explainability: route.explainability,
-    });
-  } catch (error) {
-    if (error instanceof RoutingError) {
-      const capableModelsUnavailable = error.explainability
-        .filter(
-          (candidate) =>
-            candidate.capabilityEligible &&
-            !candidate.executionEligible,
-        )
-        .map((candidate) => ({
-          model: candidate.model,
-          provider: candidate.provider,
-          tier: candidate.tier,
-          providerAvailable: candidate.providerAvailable,
-          providerHealthy: candidate.providerHealthy,
-          decisions: candidate.decisions,
-        }));
-
-      return res.status(503).json({
-        success: false,
-        error: error.message,
-        reason:
-          capableModelsUnavailable.length > 0
-            ? "CAPABLE_MODELS_UNAVAILABLE"
-            : "NO_CAPABLE_MODEL",
-        classification: error.classification,
-        capableModelsUnavailable,
-        explainability: error.explainability,
-      });
-    }
-
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Unexpected chat execution error.";
-
-    return res.status(500).json({
-      success: false,
-      error: errorMessage,
-    });
-  }
+export interface ChatExecutionInput {
+  readonly message: string;
+  readonly principal: ChatPrincipal;
+  readonly requestId?: string;
 }
+
+export interface ChatRuntime {
+  execute(input: ChatExecutionInput): Promise<unknown>;
+}
+
+interface AuthenticatedLocals {
+  principal?: ChatPrincipal;
+  requestId?: string;
+}
+
+export function createChatController(
+  runtime: ChatRuntime | null,
+): RequestHandler {
+  return async (req, res, next): Promise<void> => {
+    try {
+      const locals = res.locals as AuthenticatedLocals;
+      const principal = locals.principal;
+
+      if (
+        !principal ||
+        typeof principal.userId !== "string" ||
+        principal.userId.trim().length === 0 ||
+        !Array.isArray(principal.roles) ||
+        !Array.isArray(principal.scopes)
+      ) {
+        throw new ApiError(
+          401,
+          "UNAUTHENTICATED",
+          "Authentication is required.",
+        );
+      }
+
+      const parsed = chatRequestSchema.safeParse(req.body);
+
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          "VALIDATION_ERROR",
+          "The chat request contains invalid fields.",
+        );
+      }
+
+      if (!runtime) {
+        throw new ApiError(
+          503,
+          "RUNTIME_UNAVAILABLE",
+          "Chat execution is temporarily unavailable.",
+        );
+      }
+
+      const result = await runtime.execute({
+        message: parsed.data.message,
+        principal,
+        requestId: locals.requestId,
+      });
+
+      res.status(200).json({
+        data: result,
+        requestId: locals.requestId,
+      });
+    } catch (error: unknown) {
+      next(error);
+    }
+  };
+}
+
+const chatRuntime: ChatRuntime | null = null;
+
+export function isChatRuntimeAvailable(): boolean {
+  return chatRuntime !== null;
+}
+
+export const chatController = createChatController(chatRuntime);

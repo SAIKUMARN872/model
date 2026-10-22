@@ -1,14 +1,39 @@
-import { Router } from "express";
-import { healthController } from "../controllers/health.controller.js";
+﻿import { Router } from "express";
+import type { RequestHandler } from "express";
+import healthRoutes from "./health.routes.js";
 import { chatController } from "../controllers/chat.controller.js";
-import { telemetryController } from "../controllers/telemetry.controller.js";
-import { performanceController } from "../controllers/performance.controller.js";
 
-const router = Router();
+export interface DomainRouteMount {
+  readonly path: string;
+  readonly router: Router;
+}
 
-router.get("/health", healthController);
-router.post("/chat", chatController);
-router.get("/telemetry", telemetryController);
-router.get("/performance", performanceController);
+export interface ApiRouteOptions {
+  readonly authenticationMiddleware: RequestHandler;
+  readonly domainRoutes?: readonly DomainRouteMount[];
+}
 
-export default router;
+export function createApiRoutes(options: ApiRouteOptions): Router {
+  const router = Router();
+
+  router.use("/health", healthRoutes);
+  router.post(
+    "/chat",
+    options.authenticationMiddleware,
+    chatController,
+  );
+
+  for (const domain of options.domainRoutes ?? []) {
+    if (
+      !domain.path.startsWith("/") ||
+      domain.path === "/health" ||
+      domain.path === "/chat"
+    ) {
+      throw new TypeError("Invalid or reserved domain route path.");
+    }
+
+    router.use(domain.path, domain.router);
+  }
+
+  return router;
+}
