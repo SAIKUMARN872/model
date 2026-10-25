@@ -1,74 +1,23 @@
-export function formatDate(
-date:string|Date
-){
+export const isEmpty = (value: unknown): boolean => {
+  if (value === null || value === undefined) return true;
 
-return new Intl.DateTimeFormat(
-"en-US",
-{
+  if (typeof value === "string") return value.trim().length === 0;
 
-year:"numeric",
+  if (Array.isArray(value)) return value.length === 0;
 
-month:"short",
+  if (typeof value === "object") return Object.keys(value).length === 0;
 
-day:"numeric"
+  return false;
+};
 
-}
+export const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
-).format(new Date(date));
+export const capitalize = (text: string): string =>
+  text.charAt(0).toUpperCase() + text.slice(1);
 
-}
-
-
-
-export function truncateText(
-text:string,
-length:number=100
-){
-
-if(text.length<=length){
-
-return text;
-
-}
-
-
-return text.substring(
-0,
-length
-)+"...";
-
-}
-
-
-
-export function generateId(){
-
-return Date.now()
-.toString();
-
-}
-
-
-
-export function sleep(
-ms:number
-){
-
-return new Promise(
-(resolve)=>
-setTimeout(resolve,ms)
-);
-
-}
-
-
-
-export function classNames(
-...classes:string[]
-){
-
-return classes
-.filter(Boolean)
-.join(" ");
-
-}
+export const clamp = (
+  value: number,
+  min: number,
+  max: number
+): number => Math.min(Math.max(value, min), max);

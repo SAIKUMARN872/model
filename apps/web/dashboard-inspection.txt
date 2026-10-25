@@ -1,0 +1,1605 @@
+
+===== FILE: .\src\app\chat\page.tsx =====
+
+
+--- Lines 70-108 ---
+70:    TYPES
+71: ========================================================= */
+72: 
+73: type DashboardSection =
+74:   | "overview"
+75:   | "observability"
+76:   | "analytics"
+77:   | "usage"
+78:   | "models"
+79:   | "cost"
+80:   | "latency"
+81:   | "quality"
+82:   | "agents"
+83:   | "browser"
+84:   | "finetuning"
+85:   | "routing"
+86:   | "knowledge"
+87:   | "governance";
+88: 
+89: type ObservabilitySection =
+90:   | "overview"
+91:   | "services"
+92:   | "traces"
+93:   | "metrics"
+94:   | "logs"
+95:   | "model-performance"
+96:   | "tokens"
+97:   | "cost"
+98:   | "latency"
+99:   | "errors"
+100:   | "alerts";
+101: 
+102: type AnalyticsSection =
+103:   | "overview"
+104:   | "cost"
+105:   | "daily"
+106:   | "weekly"
+107:   | "monthly"
+108:   | "by-model"
+
+--- Lines 86-124 ---
+86:   | "knowledge"
+87:   | "governance";
+88: 
+89: type ObservabilitySection =
+90:   | "overview"
+91:   | "services"
+92:   | "traces"
+93:   | "metrics"
+94:   | "logs"
+95:   | "model-performance"
+96:   | "tokens"
+97:   | "cost"
+98:   | "latency"
+99:   | "errors"
+100:   | "alerts";
+101: 
+102: type AnalyticsSection =
+103:   | "overview"
+104:   | "cost"
+105:   | "daily"
+106:   | "weekly"
+107:   | "monthly"
+108:   | "by-model"
+109:   | "by-feature"
+110:   | "latency"
+111:   | "p50"
+112:   | "p95"
+113:   | "p99"
+114:   | "efficiency"
+115:   | "tokens"
+116:   | "cost-request"
+117:   | "successful-tasks"
+118:   | "resource-usage"
+119:   | "usage"
+120:   | "users"
+121:   | "requests"
+122:   | "models"
+123:   | "performance"
+124:   | "failures"
+
+--- Lines 99-137 ---
+99:   | "errors"
+100:   | "alerts";
+101: 
+102: type AnalyticsSection =
+103:   | "overview"
+104:   | "cost"
+105:   | "daily"
+106:   | "weekly"
+107:   | "monthly"
+108:   | "by-model"
+109:   | "by-feature"
+110:   | "latency"
+111:   | "p50"
+112:   | "p95"
+113:   | "p99"
+114:   | "efficiency"
+115:   | "tokens"
+116:   | "cost-request"
+117:   | "successful-tasks"
+118:   | "resource-usage"
+119:   | "usage"
+120:   | "users"
+121:   | "requests"
+122:   | "models"
+123:   | "performance"
+124:   | "failures"
+125:   | "retries";
+126: 
+127: type NavItem = {
+128:   label: string;
+129:   icon: ElementType;
+130:   section: DashboardSection;
+131: };
+132: 
+133: type Service = {
+134:   name: string;
+135:   description: string;
+136:   status: "Healthy" | "Warning" | "Critical";
+137:   latency: string;
+
+--- Lines 662-700 ---
+662:    MAIN DASHBOARD
+663: ========================================================= */
+664: 
+665: export default function DashboardPage() {
+666:   const [activeSection, setActiveSection] =
+667:     useState<DashboardSection>("overview");
+668: 
+669:   const [mobileSidebarOpen, setMobileSidebarOpen] =
+670:     useState(false);
+671: 
+672:   const [observabilityOpen, setObservabilityOpen] =
+673:     useState(false);
+674: 
+675:   const [analyticsOpen, setAnalyticsOpen] =
+676:     useState(false);
+677: 
+678:   const [observabilitySection, setObservabilitySection] =
+679:     useState<ObservabilitySection>("overview");
+680: 
+681:   const [analyticsSection, setAnalyticsSection] =
+682:     useState<AnalyticsSection>("overview");
+683: 
+684:   const [timeRange, setTimeRange] =
+685:     useState("Last 24 hours");
+686: 
+687:   const [search, setSearch] = useState("");
+688: 
+689:   const [notificationsOpen, setNotificationsOpen] =
+690:     useState(false);
+691: 
+692:   const [profileOpen, setProfileOpen] =
+693:     useState(false);
+694: 
+695:   const filteredTraces = useMemo(() => {
+696:     const query = search.toLowerCase().trim();
+697: 
+698:     if (!query) {
+699:       return traces;
+700:     }
+
+--- Lines 1400-1438 ---
+1400:    OVERVIEW
+1401: ========================================================= */
+1402: 
+1403: function OverviewDashboard({
+1404:   onObservability,
+1405:   onAnalytics,
+1406: }: {
+1407:   onObservability: () => void;
+1408:   onAnalytics: () => void;
+1409: }) {
+1410:   return (
+1411:     <div className="mx-auto max-w-[1600px] space-y-6">
+1412:       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+1413:         <div>
+1414:           <div className="mb-2 flex items-center gap-2">
+1415:             <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+1416: 
+1417:             <span className="text-xs font-semibold text-emerald-600">
+1418:               All systems operational
+1419:             </span>
+1420:           </div>
+1421: 
+1422:           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+1423:             ModelNow Dashboard
+1424:           </h1>
+1425: 
+1426:           <p className="mt-1 max-w-2xl text-sm text-slate-500">
+1427:             Real-time visibility into AI models, agents,
+1428:             workflows, tokens, cost, latency and quality.
+1429:           </p>
+1430:         </div>
+1431: 
+1432:         <div className="flex gap-2">
+1433:           <button
+1434:             onClick={onObservability}
+1435:             className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+1436:           >
+1437:             <Activity size={15} />
+1438:             Open Observability
+
+--- Lines 1841-1879 ---
+1841:    OBSERVABILITY
+1842: ========================================================= */
+1843: 
+1844: function ObservabilityDashboard({
+1845:   section,
+1846:   traces,
+1847:   search,
+1848:   onSectionChange,
+1849: }: {
+1850:   section: ObservabilitySection;
+1851:   traces: Trace[];
+1852:   search: string;
+1853:   onSectionChange: (
+1854:     section: ObservabilitySection
+1855:   ) => void;
+1856: }) {
+1857:   if (section === "services") {
+1858:     return (
+1859:       <PageSection
+1860:         title="Services"
+1861:         description="Monitor every AI infrastructure service."
+1862:       >
+1863:         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+1864:           {services.map((service) => (
+1865:             <ServiceCard
+1866:               key={service.name}
+1867:               service={service}
+1868:             />
+1869:           ))}
+1870:         </div>
+1871:       </PageSection>
+1872:     );
+1873:   }
+1874: 
+1875:   if (section === "traces") {
+1876:     return (
+1877:       <PageSection
+1878:         title="Traces"
+1879:         description="Distributed traces across AI requests, agents, RAG and tools."
+
+--- Lines 2152-2190 ---
+2152:    ANALYTICS
+2153: ========================================================= */
+2154: 
+2155: function AnalyticsDashboard({
+2156:   section,
+2157:   onSectionChange,
+2158: }: {
+2159:   section: AnalyticsSection;
+2160:   onSectionChange: (
+2161:     section: AnalyticsSection
+2162:   ) => void;
+2163: }) {
+2164:   if (
+2165:     section === "cost" ||
+2166:     section === "daily" ||
+2167:     section === "weekly" ||
+2168:     section === "monthly" ||
+2169:     section === "by-model" ||
+2170:     section === "by-feature"
+2171:   ) {
+2172:     return (
+2173:       <PageSection
+2174:         title="Cost Analytics"
+2175:         description="Understand AI spend across time, models and features."
+2176:       >
+2177:         <CostAnalytics />
+2178:       </PageSection>
+2179:     );
+2180:   }
+2181: 
+2182:   if (
+2183:     section === "latency" ||
+2184:     section === "p50" ||
+2185:     section === "p95" ||
+2186:     section === "p99"
+2187:   ) {
+2188:     return (
+2189:       <PageSection
+2190:         title="Latency Analytics"
+
+--- Lines 2394-2432 ---
+2394:    USAGE
+2395: ========================================================= */
+2396: 
+2397: function UsageDashboard() {
+2398:   return (
+2399:     <PageSection
+2400:       title="Usage"
+2401:       description="Monitor users, requests, models and feature adoption."
+2402:     >
+2403:       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+2404:         <MetricCard
+2405:           title="Active Users"
+2406:           value="8,420"
+2407:           change="+14.8%"
+2408:           description="this period"
+2409:           icon={Users}
+2410:           trend="up"
+2411:         />
+2412: 
+2413:         <MetricCard
+2414:           title="Requests"
+2415:           value="428.6K"
+2416:           change="+18.4%"
+2417:           description="this period"
+2418:           icon={Activity}
+2419:           trend="up"
+2420:         />
+2421: 
+2422:         <MetricCard
+2423:           title="Models Used"
+2424:           value="18"
+2425:           change="+3"
+2426:           description="active models"
+2427:           icon={BrainCircuit}
+2428:           trend="up"
+2429:         />
+2430: 
+2431:         <MetricCard
+2432:           title="Features"
+
+--- Lines 2605-2643 ---
+2605:   );
+2606: }
+2607: 
+2608: function CostAnalytics() {
+2609:   return (
+2610:     <div className="space-y-5">
+2611:       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+2612:         <MetricCard
+2613:           title="Current Spend"
+2614:           value="$1,286"
+2615:           change="-23.4%"
+2616:           description="vs baseline"
+2617:           icon={CircleDollarSign}
+2618:           trend="down"
+2619:         />
+2620: 
+2621:         <MetricCard
+2622:           title="Baseline"
+2623:           value="$1,682"
+2624:           change=""
+2625:           description="estimated without optimization"
+2626:           icon={TrendingUp}
+2627:         />
+2628: 
+2629:         <MetricCard
+2630:           title="Savings"
+2631:           value="$396"
+2632:           change="+31.2%"
+2633:           description="optimization savings"
+2634:           icon={TrendingDown}
+2635:           trend="down"
+2636:         />
+2637: 
+2638:         <MetricCard
+2639:           title="Cost / Request"
+2640:           value="$0.018"
+2641:           change="-17.8%"
+2642:           description="average"
+2643:           icon={Zap}
+
+--- Lines 2750-2788 ---
+2750:   );
+2751: }
+2752: 
+2753: function LatencyChart() {
+2754:   return (
+2755:     <div className="space-y-5">
+2756:       <div className="grid gap-4 sm:grid-cols-3">
+2757:         <MetricCard
+2758:           title="P50"
+2759:           value="195 ms"
+2760:           change="-11.4%"
+2761:           description="median latency"
+2762:           icon={Clock3}
+2763:           trend="down"
+2764:         />
+2765: 
+2766:         <MetricCard
+2767:           title="P95"
+2768:           value="490 ms"
+2769:           change="-8.2%"
+2770:           description="95th percentile"
+2771:           icon={Gauge}
+2772:           trend="down"
+2773:         />
+2774: 
+2775:         <MetricCard
+2776:           title="P99"
+2777:           value="830 ms"
+2778:           change="-6.4%"
+2779:           description="99th percentile"
+2780:           icon={Zap}
+2781:           trend="down"
+2782:         />
+2783:       </div>
+2784: 
+2785:       <DashboardCard
+2786:         title="Latency percentiles"
+2787:         subtitle="Production AI request latency"
+2788:       >
+
+--- Lines 3117-3155 ---
+3117:    MODEL TABLE
+3118: ========================================================= */
+3119: 
+3120: function ModelPerformanceTable() {
+3121:   return (
+3122:     <DashboardCard
+3123:       title="Model performance"
+3124:       subtitle="Production model comparison"
+3125:     >
+3126:       <div className="overflow-x-auto">
+3127:         <table className="w-full min-w-[700px] border-collapse">
+3128:           <thead>
+3129:             <tr className="border-b border-slate-200 text-left">
+3130:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3131:                 Model
+3132:               </th>
+3133: 
+3134:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3135:                 Requests
+3136:               </th>
+3137: 
+3138:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3139:                 Quality
+3140:               </th>
+3141: 
+3142:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3143:                 Latency
+3144:               </th>
+3145: 
+3146:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3147:                 Cost
+3148:               </th>
+3149: 
+3150:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3151:                 Status
+3152:               </th>
+3153:             </tr>
+3154:           </thead>
+3155: 
+
+--- Lines 3212-3250 ---
+3212:    TOKEN CHART
+3213: ========================================================= */
+3214: 
+3215: function TokenChart() {
+3216:   return (
+3217:     <DashboardCard
+3218:       title="Token usage"
+3219:       subtitle="Input and output tokens"
+3220:     >
+3221:       <div className="h-[320px]">
+3222:         <ResponsiveContainer
+3223:           width="100%"
+3224:           height="100%"
+3225:         >
+3226:           <AreaChart data={tokenUsage}>
+3227:             <CartesianGrid
+3228:               strokeDasharray="3 3"
+3229:               vertical={false}
+3230:               stroke="#e2e8f0"
+3231:             />
+3232: 
+3233:             <XAxis
+3234:               dataKey="day"
+3235:               tick={{
+3236:                 fontSize: 10,
+3237:                 fill: "#94a3b8",
+3238:               }}
+3239:               axisLine={false}
+3240:               tickLine={false}
+3241:             />
+3242: 
+3243:             <YAxis
+3244:               tick={{
+3245:                 fontSize: 10,
+3246:                 fill: "#94a3b8",
+3247:               }}
+3248:               axisLine={false}
+3249:               tickLine={false}
+3250:             />
+
+--- Lines 3568-3606 ---
+3568:    ERROR DASHBOARD
+3569: ========================================================= */
+3570: 
+3571: function ErrorDashboard() {
+3572:   return (
+3573:     <div className="space-y-5">
+3574:       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+3575:         <MetricCard
+3576:           title="Error Rate"
+3577:           value="0.38%"
+3578:           change="-21.4%"
+3579:           description="all services"
+3580:           icon={AlertCircle}
+3581:           trend="down"
+3582:         />
+3583: 
+3584:         <MetricCard
+3585:           title="Errors"
+3586:           value="1,624"
+3587:           change="-14.8%"
+3588:           description="last 24 hours"
+3589:           icon={AlertTriangle}
+3590:           trend="down"
+3591:         />
+3592: 
+3593:         <MetricCard
+3594:           title="Failures"
+3595:           value="428"
+3596:           change="-18.2%"
+3597:           description="failed tasks"
+3598:           icon={X}
+3599:           trend="down"
+3600:         />
+3601: 
+3602:         <MetricCard
+3603:           title="Retries"
+3604:           value="4.8%"
+3605:           change="+0.8%"
+3606:           description="request retries"
+
+--- Lines 3665-3703 ---
+3665:    ALERTS
+3666: ========================================================= */
+3667: 
+3668: function AlertsDashboard() {
+3669:   const alerts = [
+3670:     {
+3671:       title: "Browser Service latency",
+3672:       description:
+3673:         "P95 latency is above the configured threshold.",
+3674:       severity: "Warning",
+3675:       time: "4 min ago",
+3676:     },
+3677:     {
+3678:       title: "Agent retry rate",
+3679:       description:
+3680:         "Retry rate increased above 4% for Agent Service.",
+3681:       severity: "Warning",
+3682:       time: "11 min ago",
+3683:     },
+3684:     {
+3685:       title: "Spend threshold",
+3686:       description:
+3687:         "82% of the daily AI budget has been consumed.",
+3688:       severity: "Info",
+3689:       time: "24 min ago",
+3690:     },
+3691:     {
+3692:       title: "Tool execution failure",
+3693:       description:
+3694:         "Several agent tool calls exceeded timeout.",
+3695:       severity: "Critical",
+3696:       time: "31 min ago",
+3697:     },
+3698:   ];
+3699: 
+3700:   return (
+3701:     <div className="space-y-3">
+3702:       {alerts.map((alert) => (
+3703:         <div
+
+--- Lines 3848-3886 ---
+3848:    DASHBOARD CARD
+3849: ========================================================= */
+3850: 
+3851: function DashboardCard({
+3852:   title,
+3853:   subtitle,
+3854:   children,
+3855:   action,
+3856: }: DashboardCardProps) {
+3857:   return (
+3858:     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+3859:       <div className="mb-5 flex items-start justify-between gap-4">
+3860:         <div>
+3861:           <h2 className="text-sm font-bold">
+3862:             {title}
+3863:           </h2>
+3864: 
+3865:           {subtitle && (
+3866:             <p className="mt-1 text-[10px] text-slate-400">
+3867:               {subtitle}
+3868:             </p>
+3869:           )}
+3870:         </div>
+3871: 
+3872:         {action}
+3873:       </div>
+3874: 
+3875:       {children}
+3876:     </div>
+3877:   );
+3878: }
+3879: 
+3880: /* =========================================================
+3881:    MINI METRIC
+3882: ========================================================= */
+3883: 
+3884: function MiniMetric({
+3885:   label,
+3886:   value,
+
+===== FILE: .\src\app\dashboard\page.tsx =====
+
+
+--- Lines 70-108 ---
+70:    TYPES
+71: ========================================================= */
+72: 
+73: type DashboardSection =
+74:   | "overview"
+75:   | "observability"
+76:   | "analytics"
+77:   | "usage"
+78:   | "models"
+79:   | "cost"
+80:   | "latency"
+81:   | "quality"
+82:   | "agents"
+83:   | "browser"
+84:   | "finetuning"
+85:   | "routing"
+86:   | "knowledge"
+87:   | "governance"
+88:   | "computer"
+89:   | "multimodal";
+90: 
+91: 
+92: type ObservabilitySection =
+93:   | "overview"
+94:   | "services"
+95:   | "traces"
+96:   | "metrics"
+97:   | "logs"
+98:   | "model-performance"
+99:   | "tokens"
+100:   | "cost"
+101:   | "latency"
+102:   | "errors"
+103:   | "alerts";
+104: 
+105: type AnalyticsSection =
+106:   | "overview"
+107:   | "cost"
+108:   | "daily"
+
+--- Lines 89-127 ---
+89:   | "multimodal";
+90: 
+91: 
+92: type ObservabilitySection =
+93:   | "overview"
+94:   | "services"
+95:   | "traces"
+96:   | "metrics"
+97:   | "logs"
+98:   | "model-performance"
+99:   | "tokens"
+100:   | "cost"
+101:   | "latency"
+102:   | "errors"
+103:   | "alerts";
+104: 
+105: type AnalyticsSection =
+106:   | "overview"
+107:   | "cost"
+108:   | "daily"
+109:   | "weekly"
+110:   | "monthly"
+111:   | "by-model"
+112:   | "by-feature"
+113:   | "latency"
+114:   | "p50"
+115:   | "p95"
+116:   | "p99"
+117:   | "efficiency"
+118:   | "tokens"
+119:   | "cost-request"
+120:   | "successful-tasks"
+121:   | "resource-usage"
+122:   | "usage"
+123:   | "users"
+124:   | "requests"
+125:   | "models"
+126:   | "performance"
+127:   | "failures"
+
+--- Lines 102-140 ---
+102:   | "errors"
+103:   | "alerts";
+104: 
+105: type AnalyticsSection =
+106:   | "overview"
+107:   | "cost"
+108:   | "daily"
+109:   | "weekly"
+110:   | "monthly"
+111:   | "by-model"
+112:   | "by-feature"
+113:   | "latency"
+114:   | "p50"
+115:   | "p95"
+116:   | "p99"
+117:   | "efficiency"
+118:   | "tokens"
+119:   | "cost-request"
+120:   | "successful-tasks"
+121:   | "resource-usage"
+122:   | "usage"
+123:   | "users"
+124:   | "requests"
+125:   | "models"
+126:   | "performance"
+127:   | "failures"
+128:   | "retries";
+129: 
+130: type NavItem = {
+131:   label: string;
+132:   icon: ElementType;
+133:   section: DashboardSection;
+134: };
+135: 
+136: type Service = {
+137:   name: string;
+138:   description: string;
+139:   status: "Healthy" | "Warning" | "Critical";
+140:   latency: string;
+
+--- Lines 677-715 ---
+677:    MAIN DASHBOARD
+678: ========================================================= */
+679: 
+680: export default function DashboardPage() {
+681:   const [activeSection, setActiveSection] =
+682:     useState<DashboardSection>("overview");
+683: 
+684:   const [mobileSidebarOpen, setMobileSidebarOpen] =
+685:     useState(false);
+686: 
+687:   const [observabilityOpen, setObservabilityOpen] =
+688:     useState(false);
+689: 
+690:   const [analyticsOpen, setAnalyticsOpen] =
+691:     useState(false);
+692: 
+693:   const [observabilitySection, setObservabilitySection] =
+694:     useState<ObservabilitySection>("overview");
+695: 
+696:   const [analyticsSection, setAnalyticsSection] =
+697:     useState<AnalyticsSection>("overview");
+698: 
+699:   const [timeRange, setTimeRange] =
+700:     useState("Last 24 hours");
+701: 
+702:   const [search, setSearch] = useState("");
+703: 
+704:   const [notificationsOpen, setNotificationsOpen] =
+705:     useState(false);
+706: 
+707:   const [profileOpen, setProfileOpen] =
+708:     useState(false);
+709: 
+710:   const filteredTraces = useMemo(() => {
+711:     const query = search.toLowerCase().trim();
+712: 
+713:     if (!query) {
+714:       return traces;
+715:     }
+
+--- Lines 1469-1507 ---
+1469:   });
+1470: 
+1471:   const metrics = [
+1472:     { label: "Evaluation runs", value: "1,284", change: "Illustrative total", icon: "?" },
+1473:     { label: "Quality score", value: "92.4%", change: "Illustrative score", icon: "?" },
+1474:     { label: "Policy checks", value: "3,642", change: "Illustrative total", icon: "?" },
+1475:     { label: "Events needing review", value: "18", change: "Illustrative count", icon: "!" },
+1476:   ];
+1477: 
+1478:   const statusClass = (status: string) => {
+1479:     if (status === "Passed") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+1480:     if (status === "Blocked") return "bg-rose-50 text-rose-700 ring-rose-200";
+1481:     return "bg-amber-50 text-amber-700 ring-amber-200";
+1482:   };
+1483: 
+1484:   return (
+1485:     <div className="mx-auto max-w-[1600px] space-y-6">
+1486:       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+1487:         <div>
+1488:           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
+1489:             Platform reliability
+1490:           </p>
+1491:           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+1492:             Evaluation &amp; Security
+1493:           </h1>
+1494:           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+1495:             Monitor model quality, validate outputs and review security-related events from one workspace.
+1496:           </p>
+1497:         </div>
+1498:         <span className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">
+1499:           <span className="h-2 w-2 rounded-full bg-amber-500" />
+1500:           Frontend preview
+1501:         </span>
+1502:       </div>
+1503: 
+1504:       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+1505:         <strong>Preview data:</strong> All metrics and event records below are illustrative UI data, not live backend results.
+1506:       </div>
+1507: 
+
+--- Lines 1470-1508 ---
+1470: 
+1471:   const metrics = [
+1472:     { label: "Evaluation runs", value: "1,284", change: "Illustrative total", icon: "?" },
+1473:     { label: "Quality score", value: "92.4%", change: "Illustrative score", icon: "?" },
+1474:     { label: "Policy checks", value: "3,642", change: "Illustrative total", icon: "?" },
+1475:     { label: "Events needing review", value: "18", change: "Illustrative count", icon: "!" },
+1476:   ];
+1477: 
+1478:   const statusClass = (status: string) => {
+1479:     if (status === "Passed") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+1480:     if (status === "Blocked") return "bg-rose-50 text-rose-700 ring-rose-200";
+1481:     return "bg-amber-50 text-amber-700 ring-amber-200";
+1482:   };
+1483: 
+1484:   return (
+1485:     <div className="mx-auto max-w-[1600px] space-y-6">
+1486:       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+1487:         <div>
+1488:           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
+1489:             Platform reliability
+1490:           </p>
+1491:           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+1492:             Evaluation &amp; Security
+1493:           </h1>
+1494:           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+1495:             Monitor model quality, validate outputs and review security-related events from one workspace.
+1496:           </p>
+1497:         </div>
+1498:         <span className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">
+1499:           <span className="h-2 w-2 rounded-full bg-amber-500" />
+1500:           Frontend preview
+1501:         </span>
+1502:       </div>
+1503: 
+1504:       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+1505:         <strong>Preview data:</strong> All metrics and event records below are illustrative UI data, not live backend results.
+1506:       </div>
+1507: 
+1508:       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+--- Lines 1471-1509 ---
+1471:   const metrics = [
+1472:     { label: "Evaluation runs", value: "1,284", change: "Illustrative total", icon: "?" },
+1473:     { label: "Quality score", value: "92.4%", change: "Illustrative score", icon: "?" },
+1474:     { label: "Policy checks", value: "3,642", change: "Illustrative total", icon: "?" },
+1475:     { label: "Events needing review", value: "18", change: "Illustrative count", icon: "!" },
+1476:   ];
+1477: 
+1478:   const statusClass = (status: string) => {
+1479:     if (status === "Passed") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+1480:     if (status === "Blocked") return "bg-rose-50 text-rose-700 ring-rose-200";
+1481:     return "bg-amber-50 text-amber-700 ring-amber-200";
+1482:   };
+1483: 
+1484:   return (
+1485:     <div className="mx-auto max-w-[1600px] space-y-6">
+1486:       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+1487:         <div>
+1488:           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
+1489:             Platform reliability
+1490:           </p>
+1491:           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+1492:             Evaluation &amp; Security
+1493:           </h1>
+1494:           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+1495:             Monitor model quality, validate outputs and review security-related events from one workspace.
+1496:           </p>
+1497:         </div>
+1498:         <span className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">
+1499:           <span className="h-2 w-2 rounded-full bg-amber-500" />
+1500:           Frontend preview
+1501:         </span>
+1502:       </div>
+1503: 
+1504:       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+1505:         <strong>Preview data:</strong> All metrics and event records below are illustrative UI data, not live backend results.
+1506:       </div>
+1507: 
+1508:       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+1509:         {metrics.map((metric) => (
+
+--- Lines 1472-1510 ---
+1472:     { label: "Evaluation runs", value: "1,284", change: "Illustrative total", icon: "?" },
+1473:     { label: "Quality score", value: "92.4%", change: "Illustrative score", icon: "?" },
+1474:     { label: "Policy checks", value: "3,642", change: "Illustrative total", icon: "?" },
+1475:     { label: "Events needing review", value: "18", change: "Illustrative count", icon: "!" },
+1476:   ];
+1477: 
+1478:   const statusClass = (status: string) => {
+1479:     if (status === "Passed") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+1480:     if (status === "Blocked") return "bg-rose-50 text-rose-700 ring-rose-200";
+1481:     return "bg-amber-50 text-amber-700 ring-amber-200";
+1482:   };
+1483: 
+1484:   return (
+1485:     <div className="mx-auto max-w-[1600px] space-y-6">
+1486:       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+1487:         <div>
+1488:           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
+1489:             Platform reliability
+1490:           </p>
+1491:           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+1492:             Evaluation &amp; Security
+1493:           </h1>
+1494:           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+1495:             Monitor model quality, validate outputs and review security-related events from one workspace.
+1496:           </p>
+1497:         </div>
+1498:         <span className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600">
+1499:           <span className="h-2 w-2 rounded-full bg-amber-500" />
+1500:           Frontend preview
+1501:         </span>
+1502:       </div>
+1503: 
+1504:       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+1505:         <strong>Preview data:</strong> All metrics and event records below are illustrative UI data, not live backend results.
+1506:       </div>
+1507: 
+1508:       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+1509:         {metrics.map((metric) => (
+1510:           <div key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+
+--- Lines 1502-1540 ---
+1502:       </div>
+1503: 
+1504:       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
+1505:         <strong>Preview data:</strong> All metrics and event records below are illustrative UI data, not live backend results.
+1506:       </div>
+1507: 
+1508:       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+1509:         {metrics.map((metric) => (
+1510:           <div key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+1511:             <div className="flex items-start justify-between gap-3">
+1512:               <p className="text-sm font-medium text-slate-500">{metric.label}</p>
+1513:               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-lg font-semibold text-violet-700">
+1514:                 {metric.icon}
+1515:               </span>
+1516:             </div>
+1517:             <p className="mt-4 text-3xl font-bold tracking-tight text-slate-900">{metric.value}</p>
+1518:             <p className="mt-2 text-xs text-slate-400">{metric.change}</p>
+1519:           </div>
+1520:         ))}
+1521:       </div>
+1522: 
+1523:       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+1524:         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+1525:           <div className="flex items-start justify-between gap-3">
+1526:             <div>
+1527:               <h2 className="font-semibold text-slate-900">Model evaluation</h2>
+1528:               <p className="mt-1 text-sm text-slate-500">Key checks to support reliable model releases</p>
+1529:             </div>
+1530:             <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">Evaluation</span>
+1531:           </div>
+1532:           <div className="mt-5 space-y-4">
+1533:             {[
+1534:               ["Task correctness", "Compare responses with expected results."],
+1535:               ["Response consistency", "Check output stability across repeated runs."],
+1536:               ["Regression testing", "Identify changes after model or prompt updates."],
+1537:             ].map(([title, description]) => (
+1538:               <div key={title} className="flex gap-3 rounded-xl border border-slate-100 p-3">
+1539:                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">?</span>
+1540:                 <div>
+
+--- Lines 1661-1699 ---
+1661:    OVERVIEW
+1662: ========================================================= */
+1663: 
+1664: function OverviewDashboard({
+1665:   onObservability,
+1666:   onAnalytics,
+1667: }: {
+1668:   onObservability: () => void;
+1669:   onAnalytics: () => void;
+1670: }) {
+1671:   return (
+1672:     <div className="mx-auto max-w-[1600px] space-y-6">
+1673:       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+1674:         <div>
+1675:           <div className="mb-2 flex items-center gap-2">
+1676:             <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+1677: 
+1678:             <span className="text-xs font-semibold text-emerald-600">
+1679:               All systems operational
+1680:             </span>
+1681:           </div>
+1682: 
+1683:           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+1684:             ModelNow Dashboard
+1685:           </h1>
+1686: 
+1687:           <p className="mt-1 max-w-2xl text-sm text-slate-500">
+1688:             Real-time visibility into AI models, agents,
+1689:             workflows, tokens, cost, latency and quality.
+1690:           </p>
+1691:         </div>
+1692: 
+1693:         <div className="flex gap-2">
+1694:           <button
+1695:             onClick={onObservability}
+1696:             className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+1697:           >
+1698:             <Activity size={15} />
+1699:             Open Observability
+
+--- Lines 2102-2140 ---
+2102:    OBSERVABILITY
+2103: ========================================================= */
+2104: 
+2105: function ObservabilityDashboard({
+2106:   section,
+2107:   traces,
+2108:   search,
+2109:   onSectionChange,
+2110: }: {
+2111:   section: ObservabilitySection;
+2112:   traces: Trace[];
+2113:   search: string;
+2114:   onSectionChange: (
+2115:     section: ObservabilitySection
+2116:   ) => void;
+2117: }) {
+2118:   if (section === "services") {
+2119:     return (
+2120:       <PageSection
+2121:         title="Services"
+2122:         description="Monitor every AI infrastructure service."
+2123:       >
+2124:         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+2125:           {services.map((service) => (
+2126:             <ServiceCard
+2127:               key={service.name}
+2128:               service={service}
+2129:             />
+2130:           ))}
+2131:         </div>
+2132:       </PageSection>
+2133:     );
+2134:   }
+2135: 
+2136:   if (section === "traces") {
+2137:     return (
+2138:       <PageSection
+2139:         title="Traces"
+2140:         description="Distributed traces across AI requests, agents, RAG and tools."
+
+--- Lines 2413-2451 ---
+2413:    ANALYTICS
+2414: ========================================================= */
+2415: 
+2416: function AnalyticsDashboard({
+2417:   section,
+2418:   onSectionChange,
+2419: }: {
+2420:   section: AnalyticsSection;
+2421:   onSectionChange: (
+2422:     section: AnalyticsSection
+2423:   ) => void;
+2424: }) {
+2425:   if (
+2426:     section === "cost" ||
+2427:     section === "daily" ||
+2428:     section === "weekly" ||
+2429:     section === "monthly" ||
+2430:     section === "by-model" ||
+2431:     section === "by-feature"
+2432:   ) {
+2433:     return (
+2434:       <PageSection
+2435:         title="Cost Analytics"
+2436:         description="Understand AI spend across time, models and features."
+2437:       >
+2438:         <CostAnalytics />
+2439:       </PageSection>
+2440:     );
+2441:   }
+2442: 
+2443:   if (
+2444:     section === "latency" ||
+2445:     section === "p50" ||
+2446:     section === "p95" ||
+2447:     section === "p99"
+2448:   ) {
+2449:     return (
+2450:       <PageSection
+2451:         title="Latency Analytics"
+
+--- Lines 2655-2693 ---
+2655:    USAGE
+2656: ========================================================= */
+2657: 
+2658: function UsageDashboard() {
+2659:   return (
+2660:     <PageSection
+2661:       title="Usage"
+2662:       description="Monitor users, requests, models and feature adoption."
+2663:     >
+2664:       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+2665:         <MetricCard
+2666:           title="Active Users"
+2667:           value="8,420"
+2668:           change="+14.8%"
+2669:           description="this period"
+2670:           icon={Users}
+2671:           trend="up"
+2672:         />
+2673: 
+2674:         <MetricCard
+2675:           title="Requests"
+2676:           value="428.6K"
+2677:           change="+18.4%"
+2678:           description="this period"
+2679:           icon={Activity}
+2680:           trend="up"
+2681:         />
+2682: 
+2683:         <MetricCard
+2684:           title="Models Used"
+2685:           value="18"
+2686:           change="+3"
+2687:           description="active models"
+2688:           icon={BrainCircuit}
+2689:           trend="up"
+2690:         />
+2691: 
+2692:         <MetricCard
+2693:           title="Features"
+
+--- Lines 2866-2904 ---
+2866:   );
+2867: }
+2868: 
+2869: function CostAnalytics() {
+2870:   return (
+2871:     <div className="space-y-5">
+2872:       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+2873:         <MetricCard
+2874:           title="Current Spend"
+2875:           value="$1,286"
+2876:           change="-23.4%"
+2877:           description="vs baseline"
+2878:           icon={CircleDollarSign}
+2879:           trend="down"
+2880:         />
+2881: 
+2882:         <MetricCard
+2883:           title="Baseline"
+2884:           value="$1,682"
+2885:           change=""
+2886:           description="estimated without optimization"
+2887:           icon={TrendingUp}
+2888:         />
+2889: 
+2890:         <MetricCard
+2891:           title="Savings"
+2892:           value="$396"
+2893:           change="+31.2%"
+2894:           description="optimization savings"
+2895:           icon={TrendingDown}
+2896:           trend="down"
+2897:         />
+2898: 
+2899:         <MetricCard
+2900:           title="Cost / Request"
+2901:           value="$0.018"
+2902:           change="-17.8%"
+2903:           description="average"
+2904:           icon={Zap}
+
+--- Lines 3011-3049 ---
+3011:   );
+3012: }
+3013: 
+3014: function LatencyChart() {
+3015:   return (
+3016:     <div className="space-y-5">
+3017:       <div className="grid gap-4 sm:grid-cols-3">
+3018:         <MetricCard
+3019:           title="P50"
+3020:           value="195 ms"
+3021:           change="-11.4%"
+3022:           description="median latency"
+3023:           icon={Clock3}
+3024:           trend="down"
+3025:         />
+3026: 
+3027:         <MetricCard
+3028:           title="P95"
+3029:           value="490 ms"
+3030:           change="-8.2%"
+3031:           description="95th percentile"
+3032:           icon={Gauge}
+3033:           trend="down"
+3034:         />
+3035: 
+3036:         <MetricCard
+3037:           title="P99"
+3038:           value="830 ms"
+3039:           change="-6.4%"
+3040:           description="99th percentile"
+3041:           icon={Zap}
+3042:           trend="down"
+3043:         />
+3044:       </div>
+3045: 
+3046:       <DashboardCard
+3047:         title="Latency percentiles"
+3048:         subtitle="Production AI request latency"
+3049:       >
+
+--- Lines 3378-3416 ---
+3378:    MODEL TABLE
+3379: ========================================================= */
+3380: 
+3381: function ModelPerformanceTable() {
+3382:   return (
+3383:     <DashboardCard
+3384:       title="Model performance"
+3385:       subtitle="Production model comparison"
+3386:     >
+3387:       <div className="overflow-x-auto">
+3388:         <table className="w-full min-w-[700px] border-collapse">
+3389:           <thead>
+3390:             <tr className="border-b border-slate-200 text-left">
+3391:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3392:                 Model
+3393:               </th>
+3394: 
+3395:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3396:                 Requests
+3397:               </th>
+3398: 
+3399:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3400:                 Quality
+3401:               </th>
+3402: 
+3403:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3404:                 Latency
+3405:               </th>
+3406: 
+3407:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3408:                 Cost
+3409:               </th>
+3410: 
+3411:               <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+3412:                 Status
+3413:               </th>
+3414:             </tr>
+3415:           </thead>
+3416: 
+
+--- Lines 3473-3511 ---
+3473:    TOKEN CHART
+3474: ========================================================= */
+3475: 
+3476: function TokenChart() {
+3477:   return (
+3478:     <DashboardCard
+3479:       title="Token usage"
+3480:       subtitle="Input and output tokens"
+3481:     >
+3482:       <div className="h-[320px]">
+3483:         <ResponsiveContainer
+3484:           width="100%"
+3485:           height="100%"
+3486:         >
+3487:           <AreaChart data={tokenUsage}>
+3488:             <CartesianGrid
+3489:               strokeDasharray="3 3"
+3490:               vertical={false}
+3491:               stroke="#e2e8f0"
+3492:             />
+3493: 
+3494:             <XAxis
+3495:               dataKey="day"
+3496:               tick={{
+3497:                 fontSize: 10,
+3498:                 fill: "#94a3b8",
+3499:               }}
+3500:               axisLine={false}
+3501:               tickLine={false}
+3502:             />
+3503: 
+3504:             <YAxis
+3505:               tick={{
+3506:                 fontSize: 10,
+3507:                 fill: "#94a3b8",
+3508:               }}
+3509:               axisLine={false}
+3510:               tickLine={false}
+3511:             />
+
+--- Lines 3829-3867 ---
+3829:    ERROR DASHBOARD
+3830: ========================================================= */
+3831: 
+3832: function ErrorDashboard() {
+3833:   return (
+3834:     <div className="space-y-5">
+3835:       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+3836:         <MetricCard
+3837:           title="Error Rate"
+3838:           value="0.38%"
+3839:           change="-21.4%"
+3840:           description="all services"
+3841:           icon={AlertCircle}
+3842:           trend="down"
+3843:         />
+3844: 
+3845:         <MetricCard
+3846:           title="Errors"
+3847:           value="1,624"
+3848:           change="-14.8%"
+3849:           description="last 24 hours"
+3850:           icon={AlertTriangle}
+3851:           trend="down"
+3852:         />
+3853: 
+3854:         <MetricCard
+3855:           title="Failures"
+3856:           value="428"
+3857:           change="-18.2%"
+3858:           description="failed tasks"
+3859:           icon={X}
+3860:           trend="down"
+3861:         />
+3862: 
+3863:         <MetricCard
+3864:           title="Retries"
+3865:           value="4.8%"
+3866:           change="+0.8%"
+3867:           description="request retries"
+
+--- Lines 3926-3964 ---
+3926:    ALERTS
+3927: ========================================================= */
+3928: 
+3929: function AlertsDashboard() {
+3930:   const alerts = [
+3931:     {
+3932:       title: "Browser Service latency",
+3933:       description:
+3934:         "P95 latency is above the configured threshold.",
+3935:       severity: "Warning",
+3936:       time: "4 min ago",
+3937:     },
+3938:     {
+3939:       title: "Agent retry rate",
+3940:       description:
+3941:         "Retry rate increased above 4% for Agent Service.",
+3942:       severity: "Warning",
+3943:       time: "11 min ago",
+3944:     },
+3945:     {
+3946:       title: "Spend threshold",
+3947:       description:
+3948:         "82% of the daily AI budget has been consumed.",
+3949:       severity: "Info",
+3950:       time: "24 min ago",
+3951:     },
+3952:     {
+3953:       title: "Tool execution failure",
+3954:       description:
+3955:         "Several agent tool calls exceeded timeout.",
+3956:       severity: "Critical",
+3957:       time: "31 min ago",
+3958:     },
+3959:   ];
+3960: 
+3961:   return (
+3962:     <div className="space-y-3">
+3963:       {alerts.map((alert) => (
+3964:         <div
+
+--- Lines 4109-4147 ---
+4109:    DASHBOARD CARD
+4110: ========================================================= */
+4111: 
+4112: function DashboardCard({
+4113:   title,
+4114:   subtitle,
+4115:   children,
+4116:   action,
+4117: }: DashboardCardProps) {
+4118:   return (
+4119:     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+4120:       <div className="mb-5 flex items-start justify-between gap-4">
+4121:         <div>
+4122:           <h2 className="text-sm font-bold">
+4123:             {title}
+4124:           </h2>
+4125: 
+4126:           {subtitle && (
+4127:             <p className="mt-1 text-[10px] text-slate-400">
+4128:               {subtitle}
+4129:             </p>
+4130:           )}
+4131:         </div>
+4132: 
+4133:         {action}
+4134:       </div>
+4135: 
+4136:       {children}
+4137:     </div>
+4138:   );
+4139: }
+4140: 
+4141: /* =========================================================
+4142:    MINI METRIC
+4143: ========================================================= */
+4144: 
+4145: function MiniMetric({
+4146:   label,
+4147:   value,
+
+===== FILE: .\src\app\analytics\page.tsx =====
+
+
+--- Lines 93-131 ---
+93:   );
+94: }
+95: 
+96: export default function AnalyticsPage() {
+97:   const [range, setRange] = useState<Range>("7d");
+98:   const data = analyticsData[range];
+99: 
+100:   return (
+101:     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 dark:bg-slate-950 dark:text-white sm:p-8">
+102:       <div className="mx-auto max-w-7xl space-y-7">
+103:         <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+104:           <div>
+105:             <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">
+106:               ModelNow / Insights
+107:             </p>
+108:             <h1 className="mt-2 text-3xl font-bold tracking-tight">Analytics</h1>
+109:             <p className="mt-2 text-sm text-slate-500">
+110:               Monitor AI usage, spending, latency and task performance.
+111:             </p>
+112:           </div>
+113: 
+114:           <label className="flex items-center gap-3 text-sm font-medium">
+115:             Time range
+116:             <select
+117:               value={range}
+118:               onChange={(event) => setRange(event.target.value as Range)}
+119:               className="rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900"
+120:             >
+121:               <option value="7d">Last 7 days</option>
+122:               <option value="30d">Last 30 days</option>
+123:               <option value="90d">Last 90 days</option>
+124:             </select>
+125:           </label>
+126:         </header>
+127: 
+128:         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+129:           <strong>Preview data:</strong> These are illustrative values for UI testing, not live ModelNow telemetry.
+130:         </div>
+131: 
+
+--- Lines 126-164 ---
+126:         </header>
+127: 
+128:         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+129:           <strong>Preview data:</strong> These are illustrative values for UI testing, not live ModelNow telemetry.
+130:         </div>
+131: 
+132:         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+133:           <MetricCard title="Total AI Cost" value={data.cost} change="Demo" note="selected period" />
+134:           <MetricCard title="Total Requests" value={data.requests} change="Demo" note="selected period" />
+135:           <MetricCard title="P95 Latency" value={data.latency} change="Demo" note="response time" />
+136:           <MetricCard title="Success Rate" value={data.success} change="Demo" note="task completion" />
+137:         </section>
+138: 
+139:         <section className="grid gap-5 xl:grid-cols-2">
+140:           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+141:             <div className="flex items-start justify-between gap-3">
+142:               <div>
+143:                 <h2 className="text-lg font-bold">AI Spending</h2>
+144:                 <p className="mt-1 text-sm text-slate-500">Illustrative cost trend</p>
+145:               </div>
+146:               <span className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+147:                 Cost
+148:               </span>
+149:             </div>
+150:             <BarChart values={data.costs} labels={data.labels} prefix="$" />
+151:           </div>
+152: 
+153:           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+154:             <div className="flex items-start justify-between gap-3">
+155:               <div>
+156:                 <h2 className="text-lg font-bold">Request Usage</h2>
+157:                 <p className="mt-1 text-sm text-slate-500">Illustrative request volume</p>
+158:               </div>
+159:               <span className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+160:                 Requests
+161:               </span>
+162:             </div>
+163:             <BarChart values={data.usage} labels={data.labels} />
+164:           </div>
+
+--- Lines 141-179 ---
+141:             <div className="flex items-start justify-between gap-3">
+142:               <div>
+143:                 <h2 className="text-lg font-bold">AI Spending</h2>
+144:                 <p className="mt-1 text-sm text-slate-500">Illustrative cost trend</p>
+145:               </div>
+146:               <span className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+147:                 Cost
+148:               </span>
+149:             </div>
+150:             <BarChart values={data.costs} labels={data.labels} prefix="$" />
+151:           </div>
+152: 
+153:           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+154:             <div className="flex items-start justify-between gap-3">
+155:               <div>
+156:                 <h2 className="text-lg font-bold">Request Usage</h2>
+157:                 <p className="mt-1 text-sm text-slate-500">Illustrative request volume</p>
+158:               </div>
+159:               <span className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+160:                 Requests
+161:               </span>
+162:             </div>
+163:             <BarChart values={data.usage} labels={data.labels} />
+164:           </div>
+165:         </section>
+166: 
+167:         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+168:           <h2 className="text-lg font-bold">Analytics categories</h2>
+169:           <p className="mt-1 text-sm text-slate-500">
+170:             A quick overview of the metrics this page is designed to support.
+171:           </p>
+172:           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+173:             {[
+174:               ["Cost analytics", "Spend by model and feature"],
+175:               ["Latency analytics", "P50, P95 and P99 response times"],
+176:               ["Efficiency analytics", "Tokens and cost per request"],
+177:               ["Usage analytics", "Requests, users and model usage"],
+178:             ].map(([title, description]) => (
+179:               <div key={title} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+
+--- Lines 154-189 ---
+154:             <div className="flex items-start justify-between gap-3">
+155:               <div>
+156:                 <h2 className="text-lg font-bold">Request Usage</h2>
+157:                 <p className="mt-1 text-sm text-slate-500">Illustrative request volume</p>
+158:               </div>
+159:               <span className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+160:                 Requests
+161:               </span>
+162:             </div>
+163:             <BarChart values={data.usage} labels={data.labels} />
+164:           </div>
+165:         </section>
+166: 
+167:         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+168:           <h2 className="text-lg font-bold">Analytics categories</h2>
+169:           <p className="mt-1 text-sm text-slate-500">
+170:             A quick overview of the metrics this page is designed to support.
+171:           </p>
+172:           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+173:             {[
+174:               ["Cost analytics", "Spend by model and feature"],
+175:               ["Latency analytics", "P50, P95 and P99 response times"],
+176:               ["Efficiency analytics", "Tokens and cost per request"],
+177:               ["Usage analytics", "Requests, users and model usage"],
+178:             ].map(([title, description]) => (
+179:               <div key={title} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+180:                 <h3 className="font-semibold">{title}</h3>
+181:                 <p className="mt-2 text-sm text-slate-500">{description}</p>
+182:               </div>
+183:             ))}
+184:           </div>
+185:         </section>
+186:       </div>
+187:     </main>
+188:   );
+189: }
