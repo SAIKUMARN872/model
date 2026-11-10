@@ -1,0 +1,25 @@
+{
+    "name":  "@modelnow/console",
+    "private":  true,
+    "version":  "1.0.0",
+    "description":  "ModelNow enterprise AI operations console",
+    "type":  "module",
+    "engines":  {
+                    "node":  "\u003e=20.0.0"
+                },
+    "scripts":  {
+                    "dev":  "node scripts/dev.mjs",
+                    "build":  "node --input-type=module -e \"import path from \u0027node:path\u0027; import { build } from \u0027vite\u0027; import react from \u0027@vitejs/plugin-react\u0027; const root = process.cwd(); await build({ configFile: false, root, plugins: [react()], server: { host: \u0027127.0.0.1\u0027, port: 4173, strictPort: true, headers: { \u0027X-Content-Type-Options\u0027: \u0027nosniff\u0027, \u0027Referrer-Policy\u0027: \u0027strict-origin-when-cross-origin\u0027, \u0027X-Frame-Options\u0027: \u0027DENY\u0027 } }, preview: { host: \u0027127.0.0.1\u0027, port: 4173, strictPort: true }, esbuild: { tsconfigRaw: { compilerOptions: {} } }, build: { target: \u0027es2022\u0027, outDir: \u0027dist\u0027, sourcemap: false, cssCodeSplit: true, reportCompressedSize: true } });\"",
+                    "preview":  "node --input-type=module -e \"import { preview } from \u0027vite\u0027; await preview({ configFile: false, root: process.cwd(), preview: { host: \u0027127.0.0.1\u0027, port: 4173, strictPort: true } });\""
+                },
+    "dependencies":  {
+                         "lucide-react":  "0.468.0",
+                         "react":  "18.3.1",
+                         "react-dom":  "18.3.1",
+                         "react-router-dom":  "6.28.1"
+                     },
+    "devDependencies":  {
+                            "@vitejs/plugin-react":  "4.3.4",
+                            "vite":  "6.0.7"
+                        }
+}
