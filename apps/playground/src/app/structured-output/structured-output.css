@@ -1,0 +1,466 @@
+
+.so-page {
+  width: 100%;
+  color: #172033;
+  padding-bottom: 32px;
+}
+
+.so-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.so-eyebrow {
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  margin-bottom: 9px;
+}
+
+.so-header h1 {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 750;
+  letter-spacing: -0.7px;
+}
+
+.so-header p,
+.so-panel-heading p,
+.so-result-heading p {
+  margin: 7px 0 0;
+  color: #7b879b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.so-header-actions {
+  display: flex;
+  gap: 9px;
+}
+
+.so-primary-btn,
+.so-secondary-btn,
+.so-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.so-primary-btn {
+  color: #fff;
+  background: #315fea;
+  border: 1px solid #315fea;
+}
+
+.so-primary-btn:hover {
+  background: #244dce;
+}
+
+.so-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.so-secondary-btn,
+.so-copy-btn {
+  color: #475569;
+  background: #fff;
+  border: 1px solid #e1e7f0;
+}
+
+.so-secondary-btn:hover,
+.so-copy-btn:hover {
+  background: #f5f8ff;
+  border-color: #cbd8f4;
+}
+
+.so-info-strip {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px;
+  margin-bottom: 17px;
+  border: 1px solid #dce7fa;
+  border-radius: 10px;
+  background: #f5f8ff;
+}
+
+.so-info-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 9px;
+  color: #315fea;
+  background: #e7eeff;
+}
+
+.so-info-strip strong {
+  display: block;
+  color: #30466d;
+  font-size: 12px;
+}
+
+.so-info-strip p {
+  margin: 5px 0 0;
+  color: #7183a2;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.so-config-panel,
+.so-result-panel,
+.so-validation-panel {
+  min-width: 0;
+  padding: 19px;
+  border: 1px solid #e6ebf2;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.so-panel-heading,
+.so-result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.so-panel-heading h2,
+.so-result-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #202b3e;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.so-panel-heading h2 svg,
+.so-result-heading h2 svg {
+  color: #315fea;
+}
+
+.so-mode-badge {
+  padding: 6px 9px;
+  border-radius: 20px;
+  color: #315fea;
+  background: #edf3ff;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.so-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 18px;
+}
+
+.so-field > span {
+  color: #344158;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.so-field textarea,
+.so-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  outline: none;
+  color: #263248;
+  background: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.65;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.so-field textarea::placeholder {
+  color: #a4adbb;
+}
+
+.so-field textarea:focus,
+.so-field select:focus {
+  border-color: #7898f2;
+  box-shadow: 0 0 0 3px rgba(49, 95, 234, 0.08);
+}
+
+.so-model-field {
+  max-width: 480px;
+}
+
+.so-schema-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.so-schema-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.so-schema-heading strong {
+  color: #344158;
+  font-size: 11px;
+}
+
+.so-schema-heading small {
+  color: #8793a5;
+  font-size: 10px;
+}
+
+.so-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid #e3e8f0;
+  border-radius: 7px;
+  color: #64748b;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.so-collapse-btn:hover {
+  background: #f7f9fc;
+}
+
+.so-collapse-btn svg {
+  transition: transform 0.2s ease;
+}
+
+.so-collapse-btn svg.so-chevron-open {
+  transform: rotate(180deg);
+}
+
+.so-code-editor {
+  min-height: 280px;
+  background: #f8faff !important;
+  color: #30405c !important;
+  font-family: "Consolas", "Monaco", monospace !important;
+  font-size: 11px !important;
+  tab-size: 2;
+}
+
+.so-schema-valid,
+.so-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.so-schema-valid {
+  color: #28754b;
+  background: #f0faf4;
+  border: 1px solid #d6efdf;
+}
+
+.so-error {
+  color: #bd4242;
+  background: #fff6f6;
+  border: 1px solid #f3d3d3;
+}
+
+.so-config-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 19px;
+  padding-top: 15px;
+  border-top: 1px solid #edf0f5;
+}
+
+.so-config-footer > span {
+  color: #8792a4;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.so-results-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
+  gap: 16px;
+  margin-top: 17px;
+  align-items: stretch;
+}
+
+.so-copy-btn {
+  padding: 8px 11px;
+  font-size: 10px;
+}
+
+.so-copy-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.so-output-code {
+  min-height: 230px;
+  max-height: 520px;
+  overflow: auto;
+  margin: 18px 0 0;
+  padding: 15px;
+  border: 1px solid #e7edf5;
+  border-radius: 9px;
+  background: #f8faff;
+  color: #344761;
+  font-family: "Consolas", "Monaco", monospace;
+  font-size: 11px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.so-empty-validation {
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: #9aa6b8;
+}
+
+.so-empty-validation strong {
+  color: #53627a;
+  font-size: 12px;
+}
+
+.so-empty-validation span {
+  max-width: 220px;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.so-validation-content {
+  margin-top: 20px;
+}
+
+.so-validation-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 0;
+  border-bottom: 1px solid #edf0f5;
+  color: #526078;
+  font-size: 11px;
+}
+
+.so-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.so-status.success {
+  color: #23804e;
+}
+
+.so-status.failed {
+  color: #c24b4b;
+}
+
+.so-validation-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 15px;
+  padding: 12px;
+  border: 1px solid #f1d5d5;
+  border-radius: 8px;
+  background: #fff8f8;
+  color: #b64a4a;
+  font-size: 10px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.so-validation-errors strong {
+  font-size: 11px;
+}
+
+.so-success-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 11px;
+  border-radius: 8px;
+  background: #f0faf4;
+  color: #28754b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.so-success-message svg {
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .so-results-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .so-header {
+    flex-direction: column;
+  }
+
+  .so-header-actions {
+    width: 100%;
+  }
+
+  .so-header-actions button {
+    flex: 1;
+  }
+
+  .so-config-panel,
+  .so-result-panel,
+  .so-validation-panel {
+    padding: 14px;
+  }
+
+  .so-config-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .so-config-footer .so-primary-btn {
+    width: 100%;
+  }
+}

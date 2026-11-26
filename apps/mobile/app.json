@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "ModelNow",
+    "slug": "modelnow-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.marikaanti7311.modelnowmobile"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow ModelNow to convert your speech into text.",
+        "NSMicrophoneUsageDescription": "Allow ModelNow to use the microphone for voice messages."
+      }
+    },
+    "plugins": [
+      "expo-status-bar",
+      "expo-secure-store",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow ModelNow to use the microphone for voice messages.",
+          "speechRecognitionPermission": "Allow ModelNow to convert your speech into text."
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2bd6c8bd-7386-47e2-b577-5086b1761b4c"
+      }
+    }
+  }
+}

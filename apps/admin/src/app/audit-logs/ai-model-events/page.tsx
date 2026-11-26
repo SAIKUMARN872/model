@@ -1,0 +1,671 @@
+
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  Activity,
+  ArrowLeft,
+  BrainCircuit,
+  CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Download,
+  Eye,
+  FileJson,
+  FileSpreadsheet,
+  Filter,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  X,
+  XCircle,
+  Zap,
+} from "lucide-react";
+
+type ModelEvent = {
+  id: string;
+  time: string;
+  model: string;
+  provider: string;
+  actor: string;
+  organization: string;
+  event: string;
+  category: string;
+  status: "Success" | "Failed" | "Pending";
+  latency: number;
+  tokens: number;
+  requestId: string;
+  description: string;
+};
+
+const initialEvents: ModelEvent[] = [
+  {
+    id: "MOD-3001",
+    time: "2026-11-04 10:42:18",
+    model: "GPT-5",
+    provider: "OpenAI",
+    actor: "Pujitha Marikanti",
+    organization: "ModelNow Workspace",
+    event: "Inference completed",
+    category: "Inference",
+    status: "Success",
+    latency: 842,
+    tokens: 1240,
+    requestId: "req_demo_3001",
+    description: "The model generated a response successfully.",
+  },
+  {
+    id: "MOD-3002",
+    time: "2026-11-04 10:38:42",
+    model: "Claude Sonnet",
+    provider: "Anthropic",
+    actor: "Rahul Sharma",
+    organization: "Acme AI",
+    event: "Model routing decision",
+    category: "Routing",
+    status: "Success",
+    latency: 128,
+    tokens: 0,
+    requestId: "req_demo_3002",
+    description: "The routing service selected a model based on the configured policy.",
+  },
+  {
+    id: "MOD-3003",
+    time: "2026-11-04 10:32:06",
+    model: "Gemini",
+    provider: "Google",
+    actor: "Ananya Reddy",
+    organization: "Northstar Labs",
+    event: "Inference failed",
+    category: "Inference",
+    status: "Failed",
+    latency: 5020,
+    tokens: 0,
+    requestId: "req_demo_3003",
+    description: "The model request failed. Inspect backend provider logs for the actual cause.",
+  },
+  {
+    id: "MOD-3004",
+    time: "2026-11-04 10:24:31",
+    model: "Llama 3.3",
+    provider: "Meta",
+    actor: "System",
+    organization: "Vertex Systems",
+    event: "Model configuration updated",
+    category: "Configuration",
+    status: "Success",
+    latency: 0,
+    tokens: 0,
+    requestId: "req_demo_3004",
+    description: "A model configuration change was recorded.",
+  },
+  {
+    id: "MOD-3005",
+    time: "2026-11-04 10:15:50",
+    model: "GPT-5",
+    provider: "OpenAI",
+    actor: "Meera Patel",
+    organization: "Bright AI",
+    event: "Fallback model selected",
+    category: "Routing",
+    status: "Success",
+    latency: 215,
+    tokens: 0,
+    requestId: "req_demo_3005",
+    description: "A fallback model was selected under the routing policy.",
+  },
+  {
+    id: "MOD-3006",
+    time: "2026-11-04 09:57:22",
+    model: "Claude Sonnet",
+    provider: "Anthropic",
+    actor: "Rahul Sharma",
+    organization: "Acme AI",
+    event: "Inference completed",
+    category: "Inference",
+    status: "Success",
+    latency: 1150,
+    tokens: 2350,
+    requestId: "req_demo_3006",
+    description: "The model generated a response successfully.",
+  },
+  {
+    id: "MOD-3007",
+    time: "2026-11-04 09:40:11",
+    model: "Gemini",
+    provider: "Google",
+    actor: "System",
+    organization: "Northstar Labs",
+    event: "Model evaluation started",
+    category: "Evaluation",
+    status: "Pending",
+    latency: 0,
+    tokens: 0,
+    requestId: "req_demo_3007",
+    description: "A model evaluation job was queued and has not completed.",
+  },
+  {
+    id: "MOD-3008",
+    time: "2026-11-04 09:28:09",
+    model: "Llama 3.3",
+    provider: "Meta",
+    actor: "Admin User",
+    organization: "ModelNow Workspace",
+    event: "Model access changed",
+    category: "Access",
+    status: "Success",
+    latency: 0,
+    tokens: 0,
+    requestId: "req_demo_3008",
+    description: "Model access permissions were updated by an administrator.",
+  },
+];
+
+export default function AIModelEventsPage() {
+  const [events, setEvents] = useState(initialEvents);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [status, setStatus] = useState("All");
+  const [selected, setSelected] = useState<ModelEvent | null>(null);
+  const [notice, setNotice] = useState("");
+
+  const filtered = useMemo(() => {
+    const query = search.toLowerCase().trim();
+
+    return events.filter((event) => {
+      const searchable = [
+        event.id,
+        event.model,
+        event.provider,
+        event.actor,
+        event.organization,
+        event.event,
+        event.requestId,
+      ];
+
+      return (
+        (!query || searchable.some((value) => value.toLowerCase().includes(query))) &&
+        (category === "All" || event.category === category) &&
+        (status === "All" || event.status === status)
+      );
+    });
+  }, [events, search, category, status]);
+
+  const successful = events.filter((event) => event.status === "Success").length;
+  const failed = events.filter((event) => event.status === "Failed").length;
+  const pending = events.filter((event) => event.status === "Pending").length;
+  const inferenceEvents = events.filter(
+    (event) => event.category === "Inference"
+  );
+  const averageLatency = inferenceEvents.length
+    ? Math.round(
+        inferenceEvents.reduce((sum, event) => sum + event.latency, 0) /
+          inferenceEvents.length
+      )
+    : 0;
+
+  function exportEvents(format: "csv" | "json") {
+    const content =
+      format === "json"
+        ? JSON.stringify(filtered, null, 2)
+        : [
+            [
+              "ID",
+              "Time",
+              "Model",
+              "Provider",
+              "Actor",
+              "Organization",
+              "Event",
+              "Category",
+              "Status",
+              "Latency ms",
+              "Tokens",
+              "Request ID",
+            ].join(","),
+            ...filtered.map((event) =>
+              [
+                event.id,
+                event.time,
+                event.model,
+                event.provider,
+                event.actor,
+                event.organization,
+                event.event,
+                event.category,
+                event.status,
+                event.latency,
+                event.tokens,
+                event.requestId,
+              ]
+                .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+                .join(",")
+            ),
+          ].join("\n");
+
+    const blob = new Blob([content], {
+      type: format === "json" ? "application/json" : "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `modelnow-ai-model-events.${format}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setNotice(`${filtered.length} model events exported as ${format.toUpperCase()}.`);
+  }
+
+  function refresh() {
+    setEvents([...initialEvents]);
+    setSearch("");
+    setCategory("All");
+    setStatus("All");
+    setNotice("AI model events refreshed using demo data.");
+  }
+
+  return (
+    <main className="page">
+      <div className="breadcrumbs">
+        <Link href="/dashboard">Admin</Link>
+        <span>/</span>
+        <Link href="/audit-logs">Audit Logs</Link>
+        <span>/</span>
+        <strong>AI Model Events</strong>
+      </div>
+
+      <header className="header">
+        <div className="heading">
+          <div className="headingIcon"><BrainCircuit size={23} /></div>
+          <div>
+            <h1>AI Model Events</h1>
+            <p>
+              Monitor model inference, routing decisions, evaluations,
+              configuration changes, and model access events.
+            </p>
+          </div>
+        </div>
+
+        <div className="headerActions">
+          <button className="button secondary" onClick={refresh}>
+            <RefreshCw size={15} /> Refresh
+          </button>
+          <button className="button primary" onClick={() => exportEvents("csv")}>
+            <Download size={15} /> Export CSV
+          </button>
+        </div>
+      </header>
+
+      <div className="demoNotice">
+        <ShieldAlert size={17} />
+        <span>
+          <strong>Demo data:</strong> Model names, events, token counts, and
+          latency values are illustrative. Connect your AI gateway and audit
+          backend to display real production telemetry.
+        </span>
+      </div>
+
+      {notice && (
+        <div className="notice">
+          <CheckCircle2 size={16} />
+          <span>{notice}</span>
+          <button onClick={() => setNotice("")} aria-label="Dismiss notification">
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      <section className="metrics">
+        <article className="metric">
+          <div className="metricTop">
+            <span>Total events</span>
+            <Activity size={18} />
+          </div>
+          <strong>{events.length}</strong>
+          <small>Recorded model operations</small>
+        </article>
+
+        <article className="metric">
+          <div className="metricTop">
+            <span>Average inference latency</span>
+            <Zap size={18} />
+          </div>
+          <strong>{averageLatency.toLocaleString()} ms</strong>
+          <small>Across demo inference events</small>
+        </article>
+
+        <article className="metric">
+          <div className="metricTop">
+            <span>Successful</span>
+            <CheckCircle2 size={18} className="green" />
+          </div>
+          <strong>{successful}</strong>
+          <small>Completed model operations</small>
+        </article>
+
+        <article className="metric">
+          <div className="metricTop">
+            <span>Failed / pending</span>
+            <XCircle size={18} className="red" />
+          </div>
+          <strong>{failed} / {pending}</strong>
+          <small>Requires investigation or follow-up</small>
+        </article>
+      </section>
+
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Model event history</h2>
+            <p>Search and inspect model-related audit records.</p>
+          </div>
+          <div className="exportGroup">
+            <button className="button secondary" onClick={() => exportEvents("json")}>
+              <FileJson size={15} /> JSON
+            </button>
+            <button className="button secondary" onClick={() => exportEvents("csv")}>
+              <FileSpreadsheet size={15} /> CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="filters">
+          <label className="searchBox">
+            <Search size={17} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search model, provider, actor, request ID..."
+            />
+            {search && (
+              <button onClick={() => setSearch("")} aria-label="Clear search">
+                <X size={15} />
+              </button>
+            )}
+          </label>
+
+          <label className="selectBox">
+            <Filter size={15} />
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              <option value="All">All categories</option>
+              <option value="Inference">Inference</option>
+              <option value="Routing">Routing</option>
+              <option value="Configuration">Configuration</option>
+              <option value="Evaluation">Evaluation</option>
+              <option value="Access">Access</option>
+            </select>
+            <ChevronDown size={14} />
+          </label>
+
+          <label className="selectBox">
+            <Activity size={15} />
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="All">All statuses</option>
+              <option value="Success">Success</option>
+              <option value="Failed">Failed</option>
+              <option value="Pending">Pending</option>
+            </select>
+            <ChevronDown size={14} />
+          </label>
+        </div>
+
+        <div className="tableMeta">
+          <span>
+            Showing <strong>{filtered.length}</strong> of {events.length} events
+          </span>
+          <span><Clock3 size={14} /> Demo records · Latest first</span>
+        </div>
+
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Event / ID</th>
+                <th>Model / Provider</th>
+                <th>Actor / Organization</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Latency</th>
+                <th>Tokens</th>
+                <th>Timestamp</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((event) => (
+                <tr key={event.id}>
+                  <td>
+                    <strong>{event.event}</strong>
+                    <small className="muted">{event.id}</small>
+                  </td>
+                  <td>
+                    <strong>{event.model}</strong>
+                    <small className="muted">{event.provider}</small>
+                  </td>
+                  <td>
+                    <strong>{event.actor}</strong>
+                    <small className="muted">{event.organization}</small>
+                  </td>
+                  <td><span className="category">{event.category}</span></td>
+                  <td>
+                    <span className={`status ${event.status.toLowerCase()}`}>
+                      <span className="statusDot" />
+                      {event.status}
+                    </span>
+                  </td>
+                  <td>{event.latency ? `${event.latency.toLocaleString()} ms` : "—"}</td>
+                  <td>{event.tokens.toLocaleString()}</td>
+                  <td className="time">{event.time}</td>
+                  <td>
+                    <button
+                      className="iconButton"
+                      title="View event details"
+                      aria-label={`View ${event.id}`}
+                      onClick={() => setSelected(event)}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9}>
+                    <div className="empty">
+                      <Search size={25} />
+                      <strong>No AI model events found</strong>
+                      <span>Try another search term or change the filters.</span>
+                      <button
+                        className="button secondary"
+                        onClick={() => {
+                          setSearch("");
+                          setCategory("All");
+                          setStatus("All");
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {selected && (
+        <div className="modalBackdrop" onClick={() => setSelected(null)}>
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modalTitle"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modalHeader">
+              <div>
+                <span className="eyebrow">AI MODEL AUDIT RECORD</span>
+                <h2 id="modalTitle">{selected.event}</h2>
+                <p>{selected.id}</p>
+              </div>
+              <button
+                className="iconButton"
+                onClick={() => setSelected(null)}
+                aria-label="Close details"
+              >
+                <X size={19} />
+              </button>
+            </header>
+
+            <div className="modalBody">
+              <div className="detailStatus">
+                <span className={`status ${selected.status.toLowerCase()}`}>
+                  <span className="statusDot" /> {selected.status}
+                </span>
+                <span className="category">{selected.category}</span>
+              </div>
+
+              <p className="description">{selected.description}</p>
+
+              <div className="detailsGrid">
+                <Detail label="Event ID" value={selected.id} />
+                <Detail label="Timestamp" value={selected.time} />
+                <Detail label="Model" value={selected.model} />
+                <Detail label="Provider" value={selected.provider} />
+                <Detail label="Actor" value={selected.actor} />
+                <Detail label="Organization" value={selected.organization} />
+                <Detail label="Request ID" value={selected.requestId} />
+                <Detail label="Latency" value={selected.latency ? `${selected.latency} ms` : "Not applicable"} />
+                <Detail label="Token count" value={selected.tokens.toLocaleString()} />
+              </div>
+            </div>
+
+            <footer className="modalFooter">
+              <button className="button secondary" onClick={() => setSelected(null)}>
+                Close
+              </button>
+              <button
+                className="button primary"
+                onClick={() => {
+                  const blob = new Blob(
+                    [JSON.stringify(selected, null, 2)],
+                    { type: "application/json" }
+                  );
+                  const url = URL.createObjectURL(blob);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = `${selected.id}.json`;
+                  anchor.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                <Download size={15} /> Export record
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      <div className="bottomLink">
+        <Link href="/audit-logs"><ArrowLeft size={15} /> Back to Audit Logs overview</Link>
+      </div>
+
+      <style jsx>{`
+        * { box-sizing: border-box; }
+        .page { min-height: 100vh; padding: 28px; background: #f7f8fc; color: #172033; font-family: Arial, Helvetica, sans-serif; }
+        .breadcrumbs { display: flex; align-items: center; gap: 9px; color: #8b94a7; font-size: 12px; margin-bottom: 23px; }
+        .breadcrumbs a, .bottomLink a { color: #65718a; text-decoration: none; }
+        .breadcrumbs a:hover, .bottomLink a:hover { color: #315bea; }
+        .breadcrumbs strong { color: #202b40; font-weight: 600; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 22px; }
+        .heading { display: flex; gap: 14px; align-items: flex-start; }
+        .headingIcon { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; background: #e9efff; color: #315bea; flex-shrink: 0; }
+        h1 { font-size: 27px; letter-spacing: -.7px; margin: 0 0 8px; font-weight: 750; }
+        .heading p, .panelHeader p { margin: 0; color: #778198; font-size: 13px; line-height: 1.6; max-width: 680px; }
+        .headerActions, .exportGroup { display: flex; gap: 9px; flex-wrap: wrap; }
+        .button { border: 1px solid #dfe4ed; border-radius: 9px; padding: 10px 13px; display: inline-flex; gap: 8px; align-items: center; justify-content: center; font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap; transition: .15s; }
+        .secondary { background: #fff; color: #39455c; }
+        .secondary:hover { background: #f3f5fa; border-color: #cbd4e3; }
+        .primary { background: #315bea; border-color: #315bea; color: white; }
+        .primary:hover { background: #2349cf; }
+        .demoNotice { display: flex; gap: 11px; align-items: flex-start; background: #fff9eb; border: 1px solid #f2dfb3; color: #815c14; border-radius: 10px; padding: 13px 15px; font-size: 12px; line-height: 1.6; margin-bottom: 20px; }
+        .demoNotice svg { flex-shrink: 0; margin-top: 1px; }
+        .notice { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid #bfe8d3; background: #edfbf3; color: #17683c; border-radius: 9px; font-size: 12px; margin-bottom: 16px; }
+        .notice span { flex: 1; }
+        .notice button { background: none; border: 0; color: inherit; cursor: pointer; display: flex; }
+        .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; margin-bottom: 22px; }
+        .metric { background: #fff; border: 1px solid #e7eaf1; border-radius: 13px; padding: 18px; box-shadow: 0 2px 7px #1b2b4a05; min-width: 0; }
+        .metricTop { display: flex; justify-content: space-between; align-items: center; color: #758096; font-size: 12px; margin-bottom: 17px; }
+        .metricTop svg { color: #8794ad; }
+        .metric strong { display: block; font-size: 25px; letter-spacing: -.5px; overflow-wrap: anywhere; margin-bottom: 7px; }
+        .metric small { color: #929bad; font-size: 11px; line-height: 1.5; }
+        .green { color: #15945c !important; }
+        .red { color: #dc4545 !important; }
+        .panel { background: white; border: 1px solid #e6eaf1; border-radius: 13px; overflow: hidden; box-shadow: 0 2px 7px #1b2b4a05; }
+        .panelHeader { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px 22px; border-bottom: 1px solid #edf0f5; }
+        .panelHeader h2 { font-size: 15px; margin: 0 0 6px; font-weight: 750; }
+        .panelHeader p { font-size: 12px; }
+        .filters { display: flex; gap: 10px; padding: 16px 22px; border-bottom: 1px solid #edf0f5; }
+        .searchBox, .selectBox { height: 39px; display: flex; align-items: center; gap: 9px; border: 1px solid #e0e5ee; border-radius: 8px; padding: 0 11px; color: #8791a5; background: white; }
+        .searchBox { flex: 1; min-width: 170px; }
+        .searchBox input { flex: 1; min-width: 0; border: 0; outline: none; color: #263148; font-size: 12px; background: transparent; }
+        .searchBox input::placeholder { color: #a1a9b8; }
+        .searchBox button { display: flex; border: 0; background: none; color: #8993a7; cursor: pointer; }
+        .selectBox { min-width: 150px; }
+        .selectBox select { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #45516a; appearance: none; font-size: 12px; cursor: pointer; }
+        .tableMeta { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 22px; font-size: 11px; color: #8490a5; }
+        .tableMeta strong { color: #344159; }
+        .tableMeta span:last-child { display: flex; align-items: center; gap: 6px; }
+        .tableWrap { width: 100%; overflow-x: auto; }
+        table { width: 100%; min-width: 1160px; border-collapse: collapse; text-align: left; }
+        th { padding: 12px 15px; background: #fafbfe; border-top: 1px solid #edf0f5; border-bottom: 1px solid #edf0f5; color: #8791a5; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; white-space: nowrap; }
+        td { padding: 14px 15px; border-bottom: 1px solid #f0f2f6; color: #566178; font-size: 11px; white-space: nowrap; }
+        tbody tr:last-child td { border-bottom: 0; }
+        tbody tr:hover { background: #fafbff; }
+        td strong { display: block; color: #2d384e; font-size: 11px; font-weight: 650; }
+        .muted { display: block; color: #99a1b0; font-size: 10px; margin-top: 5px; }
+        .category { display: inline-flex; padding: 5px 8px; border-radius: 6px; background: #f0f3fa; color: #53627d; font-size: 10px; }
+        .status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 20px; font-size: 10px; font-weight: 650; }
+        .success { color: #16804c; background: #eaf8f0; }
+        .failed { color: #c53e45; background: #fff0f0; }
+        .pending { color: #9b6b10; background: #fff7e5; }
+        .statusDot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+        .time { color: #758096; font-size: 10px; }
+        .iconButton { width: 31px; height: 31px; display: inline-grid; place-items: center; border: 1px solid #e5e9f0; border-radius: 8px; background: white; color: #65718a; cursor: pointer; }
+        .iconButton:hover { color: #315bea; border-color: #b8c8ff; background: #f4f6ff; }
+        .empty { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #8994a8; }
+        .empty strong { color: #39465e; font-size: 14px; }
+        .empty span { font-size: 12px; }
+        .modalBackdrop { position: fixed; inset: 0; z-index: 100; background: #10182880; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .modal { width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; background: white; border-radius: 15px; box-shadow: 0 20px 70px #0003; }
+        .modalHeader { display: flex; justify-content: space-between; align-items: flex-start; padding: 22px; border-bottom: 1px solid #edf0f5; }
+        .eyebrow { color: #315bea; font-size: 10px; letter-spacing: 1px; font-weight: 750; }
+        .modalHeader h2 { margin: 9px 0 5px; color: #202b40; font-size: 20px; }
+        .modalHeader p { margin: 0; color: #8993a7; font-size: 12px; }
+        .modalBody { padding: 22px; }
+        .detailStatus { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 17px; }
+        .description { padding: 12px 14px; border-radius: 9px; background: #f7f8fc; color: #667189; font-size: 12px; line-height: 1.6; margin: 0 0 20px; }
+        .detailsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 22px; }
+        .detailLabel { color: #8b95a8; font-size: 10px; margin-bottom: 6px; }
+        .detailValue { color: #2f3b52; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+        .modalFooter { display: flex; justify-content: flex-end; gap: 9px; padding: 16px 22px; border-top: 1px solid #edf0f5; }
+        .bottomLink { padding-top: 18px; font-size: 12px; }
+        .bottomLink a { display: inline-flex; gap: 7px; align-items: center; }
+        @media (max-width: 1000px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .header { flex-direction: column; } }
+        @media (max-width: 700px) { .page { padding: 17px; } .filters { flex-direction: column; } .selectBox { width: 100%; } .panelHeader { align-items: flex-start; flex-direction: column; } .tableMeta { align-items: flex-start; flex-direction: column; } .detailsGrid { grid-template-columns: 1fr; } .headerActions { width: 100%; } .headerActions .button { flex: 1; } }
+        @media (max-width: 420px) { .metrics { grid-template-columns: 1fr; } h1 { font-size: 23px; } }
+      `}</style>
+    </main>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="detailLabel">{label}</div>
+      <div className="detailValue">{value}</div>
+    </div>
+  );
+}

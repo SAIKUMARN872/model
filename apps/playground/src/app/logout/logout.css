@@ -1,0 +1,272 @@
+
+.logout-page {
+  width: 100%;
+  min-height: 540px;
+  height: calc(100vh - 190px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #ffffff;
+  color: #172033;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.logout-container {
+  width: 100%;
+  max-width: 410px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px;
+  border: 1px solid #e8edf3;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.055);
+}
+
+.logout-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #2678d9;
+}
+
+.logout-eyebrow {
+  margin-bottom: 9px;
+  color: #8b9aab;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 1.5px;
+}
+
+.logout-container h1 {
+  width: 100%;
+  margin: 0;
+  color: #172033;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.7px;
+  text-align: center;
+}
+
+.logout-description {
+  margin: 10px 0 23px;
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.logout-account {
+  width: 100%;
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 15px;
+  border: 1px solid #e5eaf0;
+  border-radius: 12px;
+  background: #fafcff;
+}
+
+.logout-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #35495d;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.logout-account-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.logout-account-details strong {
+  color: #172033;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.logout-account-details span {
+  color: #718096;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.logout-security-note {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 19px 0 22px;
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.logout-security-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #27956a;
+}
+
+.logout-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.logout-confirm-button,
+.logout-cancel-button {
+  width: 100%;
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-confirm-button {
+  border: 1px solid #172033;
+  background: #172033;
+  color: #ffffff;
+}
+
+.logout-confirm-button:hover {
+  background: #2c3b50;
+  border-color: #2c3b50;
+}
+
+.logout-cancel-button {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+}
+
+.logout-cancel-button:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.logout-confirm-button:active,
+.logout-cancel-button:active {
+  transform: scale(0.99);
+}
+
+.logout-footer-text {
+  margin: 18px 0 0;
+  color: #a0aab7;
+  font-size: 10px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .logout-page {
+    min-height: 480px;
+    height: auto;
+    padding: 24px 14px;
+  }
+
+  .logout-container {
+    max-width: 100%;
+    padding: 25px 20px;
+  }
+
+  .logout-container h1 {
+    font-size: 21px;
+  }
+}
+
+/* Logout card positioning and compact spacing */
+
+.logout-page {
+  align-items: center;
+  padding-top: 12px;
+  padding-bottom: 40px;
+}
+
+.logout-container {
+  padding: 26px 30px;
+  transform: translateY(-30px);
+}
+
+.logout-icon {
+  margin-bottom: 13px;
+}
+
+.logout-description {
+  margin: 8px 0 18px;
+}
+
+.logout-security-note {
+  margin: 15px 0 17px;
+}
+
+.logout-footer-text {
+  margin-top: 13px;
+}
+
+@media (max-width: 600px) {
+  .logout-container {
+    padding: 23px 18px;
+    transform: translateY(-12px);
+  }
+}
+
+/* Logout card positioning and compact spacing */
+
+.logout-page {
+  align-items: center;
+  padding-top: 12px;
+  padding-bottom: 40px;
+}
+
+.logout-container {
+  padding: 26px 30px;
+  transform: translateY(-30px);
+}
+
+.logout-icon {
+  margin-bottom: 13px;
+}
+
+.logout-description {
+  margin: 8px 0 18px;
+}
+
+.logout-security-note {
+  margin: 15px 0 17px;
+}
+
+.logout-footer-text {
+  margin-top: 13px;
+}
+
+@media (max-width: 600px) {
+  .logout-container {
+    padding: 23px 18px;
+    transform: translateY(-12px);
+  }
+}
